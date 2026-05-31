@@ -1,5 +1,4 @@
-tensorflow>=2.18.0
-tensorflow-text>=2.18.0
+# Python=3.10
 keras>=3.7.0
 keras-hub>=0.17.0
 numpy>=1.26.0,<2.1.0
