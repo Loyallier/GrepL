@@ -42,3 +42,12 @@
     配置环境：参考上述指南完成依赖安装。
     运行模型：执行以下脚本运行推理或应用。
         python main.py
+
+浏览器界面说明
+    当前项目提供 NiceGUI 浏览器界面，运行后会打开本地网页：
+        python main.py
+    或：
+        python src/main.py
+
+    如果提示 NiceGUI 未安装，请先执行：
+        pip install -r requirements.txt

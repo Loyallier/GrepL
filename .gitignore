@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# GrepL local artifacts
+data/crops/
+data/demo/
+data/generated/
+data/temp/
+screenshots/
+test-output/
+models/
+.cache/
+src/mock_data.py
