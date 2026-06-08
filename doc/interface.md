@@ -1,4 +1,4 @@
-# GrepL Interface Specification
+#OK GrepL Interface Specification
 
 The browser GUI talks to the rest of the project through one stable function:
 
