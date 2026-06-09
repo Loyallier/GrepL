@@ -1,4 +1,8 @@
-#OK GrepL Interface Specification
+# GrepL Interface Specification
+
+-  try to use data class to encapsulate the input and output data for each interface
+
+## 1. GUI Related Interface
 
 The browser GUI talks to the rest of the project through one stable function:
 
@@ -11,7 +15,7 @@ Current implementation uses mock data in `src/mock_data.py`. When the real
 database, image matching, and ranking modules are ready, only
 `src/search_service.py` should need to change.
 
-## Query
+### Query (Input)
 
 ```python
 @dataclass
@@ -19,10 +23,16 @@ class SearchQuery:
     description: str
     lost_time: str | None = None
     lost_location: str | None = None
-    result_limit: int = 5
+    result_limit: int = 20
 ```
 
-## Result
+- `lost_time`: The time the item was lost as filled in by the student (e.g., `"2026-05-27 14:00"`) (Optional)
+        
+- `lost_location`: The location where the item was lost as filled in by the student (e.g., `"Library"`) (Optional)
+		
+- `result_limit`: The maximum number of most-matching results to keep in the final list
+  
+### Result (Output)
 
 ```python
 @dataclass
@@ -33,15 +43,15 @@ class MatchResult:
     found_time: str | None
     found_location: str | None
     visual_similarity: float
-    time_match: float
-    location_match: float
+    time_match: float | None
+    location_match: float | None
     overall_match: float
     confidence_label: str
     reasons: list[str]
     mismatch_notes: list[str]
 ```
 
-## Backend Integration
+### Backend Integration 
 
 ```python
 items = database.load_items()
@@ -58,54 +68,68 @@ return results
 User-facing UI labels should stay simple: use "Visual Similarity",
 "Overall Match", "Number of Results", and "Why This May Not Match".
 
+---
 
-## 1. Image Processing & Storage Pipeline
+
+## 2. Image Processing & Storage Pipeline
 
 Establish a database for "Found Items".
 
-### 1.1 Object Detection Interface
+### 2.1 Object Detection & Cropping Interface
+
+流程：模型加载 --> 推理计算图片坐标--> 裁剪出子图返回文件夹（后处理部分，image_path替换） 
+
+子图裁剪成功之后才能创建对应的 LostItem 对象
 
 - **Caller**: `main.py`
     
 - **Provider**: `detector.py`
     
-- **Function Prototype**: `detector.detect_objects(image_path: str) -> list[dict]`
+- **Function Prototype**: `detector.detect_objects(
+  row_image_path: str) -> list[RowItem]` (一个组合函数，结合坐标推理和子图裁剪流程各自的函数)
     
-- **Input Data**: The file path of the image taken for the found item (e.g., `"./raw_images/room_302.jpg"`)
+- **Input Data** (`str`): The file path of the row image taken for the found items (e.g., `"./raw_images/room_302.jpg"`)
     
-- **Return Data (dict format)**:
-    
-``` Python
-[
-    {
-        "box": [xmin, ymin, xmax, ymax],  # Bounding box coordinates
-        "confidence": 0.92,               # Confidence score
-    },
-    ...
-]
-```
+- **Return Data (`list[RowItem]`)**:  
+`RowItem` 包含一张图片裁剪出所有子图的路径，便于后续对象逐一创建。以及对应子图的裁剪坐标置信度
+    ```python
+    @dataclass
+    class RowItem:
+        """ Initial found item information"""
+        image_path: str
+        bound_confidence: float
+    ```
 
-### 1.2 Image Vectorization & Registration Interface
 
-- **Task**: `main.py` passes the cropped sub-image path and its uniquely corresponding `item_id` to `embedding_engine.py`. Then, `embedding_engine.py` converts it into an image embedding vector and caches it. Returns `True` if successful. 
-- `embedding_engine.py` extracts the image feature vector and binds/caches it with the `item_id`.
+### 2.2 Image Vectorization & Registration Interface
+
+ `main.py` passes the cropped sub-image path and its uniquely corresponding `item_id` to `embedding_engine.py`. Then, `embedding_engine.py` converts it into an image embedding vector and caches it in some data storage. Returns `True` if successful. 
+
+`embedding_engine.py` extracts the image feature vector and binds it with the `item_id`.
    
 - **Caller**: `main.py`
     
 - **Provider**: `embedding_engine.py`
     
-- **Function Prototype**: `embedding_engine.register_item_image(item_id: str, cropped_img_path: str) -> bool`
+- **Function Prototype**: `embedding_engine.register_item_image(registering_item: RegisterItem) -> bool`
     
-- **Input Data**: Path of the cropped sub-image, uniquely mapped the ID `item_id`
     
-- **Return Data**: Boolean indicator
+- **Input Data (`RegisterItem`)**: 
+    ``` Python
+    @dataclass
+    class RegisterItem:
+        item_id: str
+        image_path: str
+    ```
 
+- **Return Data (`bool`)**: a boolen indicator 
 
-## 2. Retrieval & Matching Strategy Pipeline
+---
+## 3. Retrieval & Matching Strategy Pipeline
 
 Used during the stage when students look for lost items, managing data communication after a student initiates a search request.
 
-### 2.1 Multimodal Text Retrieval Interface
+### 3.1 Multimodal Text Retrieval Interface
 
 Links the implementations of Member 5 and Member 6.
 
@@ -113,93 +137,68 @@ Links the implementations of Member 5 and Member 6.
     
 - **Provider**: `embedding_engine.py`
     
-- **Function Prototype**: `embedding_engine.match_text_to_images(description: str, items: list[dict]) -> list[dict]`
+- **Function Prototype**: `embedding_engine.match_text_to_images(description: str) -> list[ClipResult]`
     
-- **Input Data**: The description string entered by the student, containing visual appearance information, etc.
+- **Input Data (`str`)**: The description string is entered by the student, containing visual appearance information, etc.
     
-- **Return Data (includes original data + CLIP score)**:
-    
+- **Return Data (`list[ClipResult]`)**: includes item_id + CLIP score
+    ``` Python
+    @dataclass
+    class ClipResult:
+        item_id: str
+        visual_similarity: float
+    ```
 
-``` Python
-[
-    {
-        "item_id": "item_001",
-        "clip_score": 0.285  # CLIP-calculated similarity score between text and image
-    },
-    {
-        "item_id": "item_002",
-        "clip_score": 0.192
-    }
-    ...
-]
-```
 
-### 2.2 Comprehensive Strategy Ranking Interface
+### 3.2 Comprehensive Strategy Ranking Interface
 
 - **Caller**: `main.py`
     
 - **Provider**: `ranker.py`
     
-- **Function Prototype**: `ranker.evaluate_matches(candidates: list[dict], lost_time: str | None, lost_location: str | None, top_k: int) -> tuple[list[dict], dict]`
+- **Function Prototype**: `ranker.evaluate_matches(candidates: list[Candidate], query: SearchQuery) -> list[MatchResult]`
     
 - **Input Data**:
     
-    - `candidates`: A newly combined list composed of the list returned by `embedding_engine.py` along with meta-information like the actual time the item was found (`found_time`) and the actual location (`found_location`):
-        
-``` Python
-[
-    {
-        "item_id": "item_20260527_001",
-        "clip_score": 0.2854,
-        "found_time": "2026-05-27 14:30",  
-        "found_location": "Library",  
-        "confidence": 0.94 # Detection confidence score, used for weight trust deduction
-    },
-    ... 
-]
-```
-- 
-	- `lost_time`: The time the item was lost as filled in by the student (e.g., `"2026-05-27 14:00"`)
-        
-    - `lost_location`: The location where the item was lost as filled in by the student (e.g., `"Library"`)
-		
-	- `top_k`: The maximum number of most-matching results to keep in the final list
-	
-- **Return Data (Dual return values: Final ranking list + Elimination/Ranking reasons)**:
-    
-    - **Return Value 1 (list)**: The final Top-N recommendation list combined with appearance and spatio-temporal weighting, including multidimensional score breakdowns.
-        
-    - **Return Value 2 (dict)**: The specific evaluation reasons for each item's ranking (including both positive and negative aspects).
-        
+    `candidates`: A newly combined list composed of `Candidate` objects.
+   
+    ``` Python
+    @dataclass
+    class Candidate:
+        item_id: str
+        title:str
+        image_path: str
+        found_time: str | None 
+        found_location: str | None 
+        visual_similarity: float 
+        bound_confidence: float
 
-``` Python
-# Return Value 1
-[
-    {
-        "item_id": "item_001", 
-        "final_score": 0.88,
-        "time_match": 0.95,        
-        "location_match": 1.0      
-    },
-    {
-        "item_id": "item_002", 
-        "final_score": 0.45,
-        "time_match": 0.80,
-        "location_match": 0.1
-    }
-]
-
-# Return Value 2
-{
-    "item_001": {
-        "reasons": ["Appearance matches highly.", "The found time (14:30) is close to your lost time."],
-        "mismatch_notes": []
-    },
-    "item_002": {
-        "reasons": ["Appearance has some similarity."],
-        "mismatch_notes": ["This item was found at 'Academic Building A', which is far from the 'Library' you filled in."]
-    }
-}
-``` 
+    ```
+    `query`:  `SearchQuery` object, the corresponding data class is defined in the above section
+    	
+- **Return Data (`MatchResult`)**:
+    according to data class defined in the above section
 
 
+
+- 当 `query.lost_time` 或 `query.lost_location` 为 None（即用户未填写时间或地点）时，`ranker.py` 应按以下策略调整权重计算公式（降级处理）,一共三种情况：
+
+  1. 若 lost_time 缺失 (None)：
+
+  -  处理逻辑：自动取消“时间邻近度评分”。不对候选物品进行时间跨度扣分。
+
+  - 权重转移：原本分配给时间维度的权重，将等比例转移/合并到 `visual_similarity` 上，使系统退化为以“视觉特征为主、空间特征为辅”的检索模式。
+
+  2. 若 lost_location 缺失 (None)：
+
+  - 处理逻辑：自动取消“空间地理位置距离/区域匹配评分”。不再考虑具体丢失地点与拾获地点的距离差。
+
+  - 权重转移：原本分配给地理地点的权重，将等比例转移/合并到 `visual_similarity` 上。
+
+  3. 若两者皆缺失 (None)：
+
+  - 处理逻辑：完全不使用任何时空过滤与加权。
+
+  - 降级结果：`ranker.py` 的评分逻辑直接等价于 Candidate.visual_similarity * Bound_Weight（仅参考视觉相似度与目标检测置信度，该公式仅是作为例子），退化为单纯的图像外观检索。
+  
+        
