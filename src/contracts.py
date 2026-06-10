@@ -37,9 +37,47 @@ class MatchResult:
     found_time: str | None
     found_location: str | None
     visual_similarity: float
-    time_match: float
-    location_match: float
+    time_match: float | None
+    location_match: float | None
     overall_match: float
     confidence_label: str
     reasons: list[str] = field(default_factory=list)
     mismatch_notes: list[str] = field(default_factory=list)
+
+
+
+@dataclass
+class RowItem:
+    """ Initial information for each identified item from one picture. """
+
+    image_path: str
+    bound_confidence: float
+
+
+@dataclass
+class RegisterItem:
+    """ To encapsulate all information required for the cropped image of an item to being converts into an image embedding vector. """
+
+    item_id: str
+    image_path: str
+
+
+@dataclass
+class ClipResult:
+    """ The comparison result returned from embedding_engine.py. """
+
+    item_id: str
+    visual_similarity: float
+
+
+@dataclass
+class Candidate:
+    """ Transfor item information required for ranker.py. """
+
+    item_id: str
+    title: str
+    image_path: str
+    found_time: str | None 
+    found_location: str | None 
+    visual_similarity: float 
+    bound_confidence: float
