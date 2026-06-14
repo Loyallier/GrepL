@@ -6,11 +6,27 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class TimePoint:
+    """An optional objective time point selected from the UI."""
+
+    date: str | None = None
+    hour: int | None = None
+
+
+@dataclass
+class TimeRange:
+    """An optional objective time range selected from the UI."""
+
+    start: TimePoint | None = None
+    end: TimePoint | None = None
+
+
+@dataclass
 class SearchQuery:
     """User search input collected from the browser interface."""
 
     description: str
-    lost_time: str | None = None
+    lost_time_range: TimeRange | None = None
     lost_location: str | None = None
     result_limit: int = 20
 
@@ -22,7 +38,7 @@ class LostItem:
     item_id: str
     title: str
     image_path: str
-    found_time: str | None
+    found_time: TimePoint | None
     found_location: str | None
     category: str | None = None
 
@@ -34,7 +50,7 @@ class MatchResult:
     item_id: str
     title: str
     image_path: str
-    found_time: str | None
+    found_time: TimePoint | None
     found_location: str | None
     visual_similarity: float
     time_match: float | None
@@ -77,7 +93,7 @@ class Candidate:
     item_id: str
     title: str
     image_path: str
-    found_time: str | None 
+    found_time: TimePoint | None
     found_location: str | None 
     visual_similarity: float 
     bound_confidence: float

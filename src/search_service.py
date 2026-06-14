@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contracts import MatchResult, SearchQuery
+from config.options import LOCATION_OPTIONS, SelectOption
 
 from mock_data import mock_search_items # 导入 mock，方便在没有算法时，前端依然可以单独运行测试（实现后删除）
 
@@ -18,7 +19,7 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
         items_with_similarity = embedding_engine.match_text_to_images(query.description, items)
         results = ranker.evaluate_matches(
             items_with_similarity,
-            query.lost_time,
+            query.lost_time_range,
             query.lost_location,
             top_k=query.result_limit,
         )
@@ -28,15 +29,15 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
         return []
     normalized_query = SearchQuery(
         description=query.description.strip(),
-        lost_time=_clean_optional(query.lost_time),
-        lost_location=_clean_optional(query.lost_location),
+        lost_time_range=query.lost_time_range,
+        lost_location=_clean_option(query.lost_location, LOCATION_OPTIONS),
         result_limit=max(1, min(int(query.result_limit), 10)),
     )
     return mock_search_items(normalized_query)
 
 
-def _clean_optional(value: str | None) -> str | None:
+def _clean_option(value: str | None, options: dict[str, SelectOption]) -> str:
     if value is None:
-        return None
+        return "any"
     cleaned = value.strip()
-    return cleaned or None
+    return cleaned if cleaned in options else "any"

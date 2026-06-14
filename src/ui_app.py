@@ -9,7 +9,8 @@ from pathlib import Path
 from nicegui import app, ui
 
 from mock_data import DEMO_ASSET_DIR
-from contracts import MatchResult, SearchQuery
+from config.options import LOCATION_OPTIONS, date_options, hour_options, option_label, select_labels
+from contracts import MatchResult, SearchQuery, TimePoint, TimeRange
 from search_service import search_items
 
 
@@ -54,21 +55,38 @@ def _register_pages() -> None:
                     .classes("w-full")
                     .props("outlined autogrow clearable")
                 )
-                lost_time = (
-                    ui.input(
-                        label="Lost Time",
-                        placeholder="Example: yesterday afternoon",
-                    )
-                    .classes("w-full")
-                    .props("outlined clearable")
-                )
+                with ui.column().classes("time-range-group"):
+                    ui.label("Lost Time Range").classes("field-group-title")
+                    with ui.row().classes("time-range-row"):
+                        start_date = (
+                            ui.select(options=date_options(), label="Start Date", value="")
+                            .classes("time-select")
+                            .props("outlined")
+                        )
+                        start_hour = (
+                            ui.select(options=hour_options(), label="Start Hour", value="")
+                            .classes("time-select")
+                            .props("outlined")
+                        )
+                    with ui.row().classes("time-range-row"):
+                        end_date = (
+                            ui.select(options=date_options(), label="End Date", value="")
+                            .classes("time-select")
+                            .props("outlined")
+                        )
+                        end_hour = (
+                            ui.select(options=hour_options(), label="End Hour", value="")
+                            .classes("time-select")
+                            .props("outlined")
+                        )
                 lost_location = (
-                    ui.input(
+                    ui.select(
+                        options=select_labels(LOCATION_OPTIONS),
                         label="Lost Location",
-                        placeholder="Example: library",
+                        value="any",
                     )
                     .classes("w-full")
-                    .props("outlined clearable")
+                    .props("outlined")
                 )
                 result_limit = (
                     ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
@@ -111,8 +129,13 @@ def _register_pages() -> None:
             try:
                 query = SearchQuery(
                     description=query_text,
-                    lost_time=lost_time.value,
-                    lost_location=lost_location.value,
+                    lost_time_range=_build_time_range(
+                        start_date.value,
+                        start_hour.value,
+                        end_date.value,
+                        end_hour.value,
+                    ),
+                    lost_location=lost_location.value or "any",
                     result_limit=int(result_limit.value or 5),
                 )
                 results = await asyncio.to_thread(search_items, query)
@@ -133,8 +156,11 @@ def _register_pages() -> None:
 
         def handle_reset() -> None:
             description.value = ""
-            lost_time.value = ""
-            lost_location.value = ""
+            start_date.value = ""
+            start_hour.value = ""
+            end_date.value = ""
+            end_hour.value = ""
+            lost_location.value = "any"
             result_limit.value = 5
             status_label.text = "Enter a description to begin."
             results_container.clear()
@@ -209,6 +235,33 @@ def _render_error_state(container: ui.column) -> None:
             ui.label("Please try again or check whether the backend modules are available.").classes("empty-detail")
 
 
+def _build_time_range(
+    start_date: str | None,
+    start_hour: str | int | None,
+    end_date: str | None,
+    end_hour: str | int | None,
+) -> TimeRange | None:
+    start = _build_time_point(start_date, start_hour)
+    end = _build_time_point(end_date, end_hour)
+    if start is None and end is None:
+        return None
+    return TimeRange(start=start, end=end)
+
+
+def _build_time_point(selected_date: str | None, selected_hour: str | int | None) -> TimePoint | None:
+    date_value = selected_date or None
+    hour_value = _selected_hour_to_int(selected_hour)
+    if date_value is None and hour_value is None:
+        return None
+    return TimePoint(date=date_value, hour=hour_value)
+
+
+def _selected_hour_to_int(value: str | int | None) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
 def _image_url(image_path: str) -> str | None:
     path = Path(image_path)
     if not path.is_file():
@@ -221,9 +274,21 @@ def _image_url(image_path: str) -> str | None:
 
 
 def _found_summary(result: MatchResult) -> str:
-    time_text = result.found_time or "Time unknown"
-    location_text = result.found_location or "Location unknown"
+    time_text = _format_time_point(result.found_time)
+    location_text = option_label(result.found_location, LOCATION_OPTIONS) or result.found_location or "Location unknown"
     return f"Found at {location_text} · {time_text}"
+
+
+def _format_time_point(time_point: TimePoint | None) -> str:
+    if time_point is None:
+        return "Time unknown"
+    if time_point.date and time_point.hour is not None:
+        return f"{time_point.date} {time_point.hour:02d}:00"
+    if time_point.date:
+        return time_point.date
+    if time_point.hour is not None:
+        return f"{time_point.hour:02d}:00"
+    return "Time unknown"
 
 
 def _percent(value: float) -> str:

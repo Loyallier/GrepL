@@ -85,6 +85,28 @@ body {
   line-height: 1.65;
 }
 
+.time-range-group {
+  width: 100%;
+  gap: 8px;
+}
+
+.field-group-title {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.time-range-row {
+  width: 100%;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.time-select {
+  flex: 1;
+  min-width: 0;
+}
+
 .action-row {
   width: 100%;
   gap: 12px;
@@ -351,6 +373,10 @@ body {
 }
 
 @media (max-width: 640px) {
+  .time-range-row {
+    flex-direction: column;
+  }
+
   .result-main {
     flex-direction: column;
   }

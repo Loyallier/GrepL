@@ -221,11 +221,11 @@ __marimo__/
 
 # GrepL local artifacts
 data/crops/
-data/demo/
 data/generated/
 data/temp/
 screenshots/
 test-output/
 models/
 .cache/
+data/demo/
 src/mock_data.py

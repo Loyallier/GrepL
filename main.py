@@ -9,7 +9,17 @@ from pathlib import Path
 SRC_DIR = Path(__file__).resolve().parent / "src"
 sys.path.insert(0, str(SRC_DIR))
 
-from main import main  # noqa: E402
+
+def main() -> None:
+    try:
+        from ui_app import run_app
+    except ModuleNotFoundError as error:
+        if error.name == "nicegui":
+            print("NiceGUI is not installed. Run: pip install -r requirements.txt")
+            sys.exit(1)
+        raise
+
+    run_app()
 
 
 if __name__ in {"__main__", "__mp_main__"}:
