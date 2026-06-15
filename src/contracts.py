@@ -42,6 +42,25 @@ class LostItem:
     category: str | None = None
 
 
+@dataclass(frozen=True)
+class BoundingBox:
+    """Pixel-space object box in the original image."""
+
+    x_min: int
+    y_min: int
+    x_max: int
+    y_max: int
+
+
+@dataclass(frozen=True)
+class DetectedObject:
+    """A detector output before cropping and registration."""
+
+    label: str
+    confidence: float
+    bbox: BoundingBox
+
+
 @dataclass
 class MatchResult:
     """A ranked match returned to the UI."""
@@ -62,10 +81,12 @@ class MatchResult:
 
 @dataclass
 class RowItem:
-    """ Initial information for each identified item from one picture. """
+    """Initial information for each identified item from one picture."""
 
     image_path: str
     bound_confidence: float
+    bbox: BoundingBox | None = None
+    label: str | None = None
 
 
 @dataclass

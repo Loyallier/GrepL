@@ -221,7 +221,8 @@ __marimo__/
 
 # Don't touch，just for local testing
 data/demo/
-src/mock_data.py
+src/demo_assets/*
+!src/demo_assets/.gitkeep
 
 # GrepL local artifacts
 data/crops/
