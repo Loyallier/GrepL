@@ -41,58 +41,60 @@ def _register_pages() -> None:
 
         with ui.element("main").classes("app-shell"):
             with ui.element("section").classes("search-panel"):
-                ui.label("GrepL").classes("brand")
-                ui.label("Campus Lost & Found").classes("page-title")
-                ui.label("Describe your lost item and review the most likely matches from the found-item library.").classes(
-                    "intro-text"
-                )
+                with ui.element("div").classes("search-copy"):
+                    ui.label("GrepL").classes("brand")
+                    ui.label("Campus Lost & Found").classes("page-title")
+                    ui.label("Describe your lost item and review candidate matches from the found-item library.").classes(
+                        "intro-text"
+                    )
 
-                description = (
-                    ui.textarea(
-                        label="Item Description",
-                        placeholder="Example: blue water bottle with stickers",
+                with ui.element("div").classes("search-form-grid"):
+                    description = (
+                        ui.textarea(
+                            label="Item Description",
+                            placeholder="Example: blue bottle with stickers",
+                        )
+                        .classes("description-field")
+                        .props("outlined autogrow clearable")
                     )
-                    .classes("w-full")
-                    .props("outlined autogrow clearable")
-                )
-                with ui.column().classes("time-range-group"):
-                    ui.label("Lost Time Range").classes("field-group-title")
-                    with ui.row().classes("time-range-row"):
-                        start_date = (
-                            ui.select(options=date_options(), label="Start Date", value="")
-                            .classes("time-select")
-                            .props("outlined")
+                    with ui.column().classes("time-range-group"):
+                        ui.label("Lost Time Range").classes("field-group-title")
+                        with ui.row().classes("time-range-row"):
+                            start_date = (
+                                ui.select(options=date_options(), label="Start Date", value="")
+                                .classes("time-select")
+                                .props("outlined")
+                            )
+                            start_hour = (
+                                ui.select(options=hour_options(), label="Start Hour", value="")
+                                .classes("time-select")
+                                .props("outlined")
+                            )
+                        with ui.row().classes("time-range-row"):
+                            end_date = (
+                                ui.select(options=date_options(), label="End Date", value="")
+                                .classes("time-select")
+                                .props("outlined")
+                            )
+                            end_hour = (
+                                ui.select(options=hour_options(), label="End Hour", value="")
+                                .classes("time-select")
+                                .props("outlined")
+                            )
+                    lost_location = (
+                        ui.select(
+                            options=select_labels(LOCATION_OPTIONS),
+                            label="Lost Location",
+                            value="any",
                         )
-                        start_hour = (
-                            ui.select(options=hour_options(), label="Start Hour", value="")
-                            .classes("time-select")
-                            .props("outlined")
-                        )
-                    with ui.row().classes("time-range-row"):
-                        end_date = (
-                            ui.select(options=date_options(), label="End Date", value="")
-                            .classes("time-select")
-                            .props("outlined")
-                        )
-                        end_hour = (
-                            ui.select(options=hour_options(), label="End Hour", value="")
-                            .classes("time-select")
-                            .props("outlined")
-                        )
-                lost_location = (
-                    ui.select(
-                        options=select_labels(LOCATION_OPTIONS),
-                        label="Lost Location",
-                        value="any",
+                        .classes("w-full")
+                        .props("outlined")
                     )
-                    .classes("w-full")
-                    .props("outlined")
-                )
-                result_limit = (
-                    ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
-                    .classes("w-full")
-                    .props("outlined")
-                )
+                    result_limit = (
+                        ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
+                        .classes("w-full")
+                        .props("outlined")
+                    )
 
                 with ui.row().classes("action-row"):
                     search_button = ui.button("Search", icon="search").classes("primary-action").props("unelevated no-caps")
@@ -106,7 +108,7 @@ def _register_pages() -> None:
             with ui.element("section").classes("results-panel"):
                 with ui.row().classes("results-header"):
                     with ui.column().classes("header-copy"):
-                        ui.label("Match Results").classes("section-title")
+                        ui.label("Candidate Matches").classes("section-title")
                         status_label = ui.label("Enter a description to begin.").classes("status-text")
                     ui.icon("inventory_2").classes("header-icon")
 
@@ -145,7 +147,7 @@ def _register_pages() -> None:
                     _render_results(results_container, results)
                 else:
                     status_label.text = "No matches found."
-                    _render_empty_state(results_container, "No matches yet", "Try adding a color, item type, or location.")
+                    _render_empty_state(results_container, "No candidates yet", "Try adding a color, visual feature, or location.")
             except Exception:
                 status_label.text = "Search failed."
                 results_container.clear()
@@ -191,7 +193,8 @@ def _render_result_card(index: int, result: MatchResult) -> None:
                 with ui.row().classes("result-topline"):
                     ui.label(f"#{index}").classes("rank-badge")
                     ui.label(result.confidence_label).classes(_confidence_class(result.confidence_label))
-                ui.label(result.title).classes("item-title")
+                ui.label(f"Candidate #{index}").classes("item-title")
+                ui.label("Review this item visually before claiming it.").classes("candidate-note")
                 ui.label(_found_summary(result)).classes("item-meta")
 
                 with ui.row().classes("score-row"):

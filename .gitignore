@@ -219,6 +219,10 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Don't touch，just for local testing
+data/demo/
+src/mock_data.py
+
 # GrepL local artifacts
 data/crops/
 data/generated/
@@ -227,5 +231,3 @@ screenshots/
 test-output/
 models/
 .cache/
-data/demo/
-src/mock_data.py

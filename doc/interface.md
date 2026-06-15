@@ -15,6 +15,9 @@ Current implementation uses mock data in `src/mock_data.py`. When the real
 database, image matching, and ranking modules are ready, only
 `src/search_service.py` should need to change.
 
+The search result is a candidate match, not an object-recognition label. The UI
+must not display item names inferred from the matching model.
+
 ### Query (Input)
 
 ```python
@@ -60,7 +63,6 @@ Time dropdown values are not normalized by the GUI. Blank date/hour selections r
 @dataclass
 class MatchResult:
     item_id: str
-    title: str
     image_path: str
     found_time: TimePoint | None
     found_location: str | None
@@ -89,6 +91,8 @@ return results
 
 User-facing UI labels should stay simple: use "Visual Similarity",
 "Overall Match", "Number of Results", and "Why This May Not Match".
+Result cards should use neutral labels such as "Candidate #1" instead of item
+names, because CLIP retrieves similar images but does not identify the object.
 
 ---
 
@@ -188,7 +192,6 @@ Links the implementations of Member 5 and Member 6.
     @dataclass
     class Candidate:
         item_id: str
-        title:str
         image_path: str
         found_time: TimePoint | None 
         found_location: str | None 

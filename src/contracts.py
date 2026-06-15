@@ -36,7 +36,6 @@ class LostItem:
     """A found item stored by the lost-and-found system."""
 
     item_id: str
-    title: str
     image_path: str
     found_time: TimePoint | None
     found_location: str | None
@@ -48,7 +47,6 @@ class MatchResult:
     """A ranked match returned to the UI."""
 
     item_id: str
-    title: str
     image_path: str
     found_time: TimePoint | None
     found_location: str | None
@@ -91,7 +89,6 @@ class Candidate:
     """ Transfor item information required for ranker.py. """
 
     item_id: str
-    title: str
     image_path: str
     found_time: TimePoint | None
     found_location: str | None 

@@ -28,9 +28,9 @@ body {
 
 .app-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(320px, 410px) minmax(0, 1fr);
-  gap: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
   padding: 28px;
 }
 
@@ -42,16 +42,16 @@ body {
 }
 
 .search-panel {
-  min-height: calc(100vh - 56px);
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 20px 28px;
+  align-items: start;
   padding: 28px;
   border-radius: 8px;
 }
 
 .results-panel {
-  min-height: calc(100vh - 56px);
+  min-height: 420px;
   padding: 28px;
   border-radius: 8px;
 }
@@ -85,6 +85,24 @@ body {
   line-height: 1.65;
 }
 
+.search-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.search-form-grid {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) minmax(320px, 1.8fr) minmax(180px, 0.8fr) minmax(150px, 0.6fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.description-field {
+  width: 100%;
+}
+
 .time-range-group {
   width: 100%;
   gap: 8px;
@@ -108,6 +126,7 @@ body {
 }
 
 .action-row {
+  grid-column: 2;
   width: 100%;
   gap: 12px;
   align-items: center;
@@ -132,6 +151,7 @@ body {
 }
 
 .loading-row {
+  grid-column: 2;
   align-items: center;
   gap: 10px;
   min-height: 28px;
@@ -170,6 +190,8 @@ body {
 
 .results-grid {
   width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 16px;
 }
 
@@ -283,6 +305,12 @@ body {
   font-weight: 800;
 }
 
+.candidate-note {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .item-meta {
   font-size: 14px;
 }
@@ -362,17 +390,33 @@ body {
 
 @media (max-width: 980px) {
   .app-shell {
-    grid-template-columns: 1fr;
     padding: 16px;
   }
 
-  .search-panel,
+  .search-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .search-form-grid {
+    grid-column: auto;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .action-row,
+  .loading-row {
+    grid-column: auto;
+  }
+
   .results-panel {
     min-height: auto;
   }
 }
 
 @media (max-width: 640px) {
+  .search-form-grid {
+    grid-template-columns: 1fr;
+  }
+
   .time-range-row {
     flex-direction: column;
   }
