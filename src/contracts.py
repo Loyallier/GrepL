@@ -39,6 +39,8 @@ class LostItem:
     image_path: str
     found_time: TimePoint | None
     found_location: str | None
+    bound_confidence: float
+    raw_id: str | None = None
     category: str | None = None
 
 
@@ -58,6 +60,16 @@ class MatchResult:
     reasons: list[str] = field(default_factory=list)
     mismatch_notes: list[str] = field(default_factory=list)
 
+
+
+@dataclass
+class RawFoundItem:
+    """A raw found-item photo containing one or more physical items."""
+
+    raw_id: str
+    image_path: str
+    found_time: TimePoint | None
+    found_location: str | None
 
 
 @dataclass
