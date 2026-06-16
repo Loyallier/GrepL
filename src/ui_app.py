@@ -48,64 +48,48 @@ def _register_pages() -> None:
                         "intro-text"
                     )
 
-                with ui.element("div").classes("search-bar"):
-                    with ui.element("div").classes("search-segment search-segment-description"):
+                # 动态折叠搜索栏容器
+                with ui.element("div").classes("search-container"):
+                    with ui.row().classes("search-main-row"):
                         description = (
-                            ui.textarea(
+                            ui.input(
                                 label="Item Description",
                                 placeholder="Example: blue bottle with stickers",
                             )
                             .classes("description-field search-control")
-                            .props("borderless autogrow clearable")
+                            .props("borderless clearable")
                         )
-                    with ui.element("div").classes("search-segment search-segment-time"):
-                        with ui.column().classes("time-range-group"):
-                            ui.label("Lost Time Range").classes("field-group-title")
-                            with ui.row().classes("time-range-row"):
-                                start_date = (
-                                    ui.select(options=date_options(), label="Start Date", value="")
-                                    .classes("time-select search-control")
-                                    .props("borderless")
-                                )
-                                start_hour = (
-                                    ui.select(options=hour_options(), label="Start Hour", value="")
-                                    .classes("time-select search-control")
-                                    .props("borderless")
-                                )
-                            with ui.row().classes("time-range-row"):
-                                end_date = (
-                                    ui.select(options=date_options(), label="End Date", value="")
-                                    .classes("time-select search-control")
-                                    .props("borderless")
-                                )
-                                end_hour = (
-                                    ui.select(options=hour_options(), label="End Hour", value="")
-                                    .classes("time-select search-control")
-                                    .props("borderless")
-                                )
-                    with ui.element("div").classes("search-segment search-segment-location"):
-                        lost_location = (
-                            ui.select(
-                                options=select_labels(LOCATION_OPTIONS),
-                                label="Lost Location",
-                                value="any",
-                            )
-                            .classes("w-full search-control")
-                            .props("borderless")
-                        )
-                    with ui.element("div").classes("search-segment search-segment-limit"):
-                        result_limit = (
-                            ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
-                            .classes("w-full search-control")
-                            .props("borderless")
-                        )
-                    with ui.row().classes("action-row"):
-                        search_button = ui.button("Search", icon="search").classes("primary-action").props(
-                            "unelevated no-caps"
-                        )
-                        reset_button = ui.button("Reset", icon="refresh").classes("secondary-action").props(
-                            "flat no-caps"
-                        )
+                        with ui.row().classes("main-action-group"):
+                            advanced_toggle = ui.button("Filters", icon="tune").classes("filter-action").props("flat no-caps")
+                            search_button = ui.button("Search", icon="search").classes("primary-action").props("unelevated no-caps")
+
+                    with ui.element("div").classes("search-advanced-panel") as advanced_panel:
+                        advanced_panel.set_visibility(False)
+                        ui.separator().classes("panel-divider")
+                        
+                        with ui.element("div").classes("advanced-grid"):
+                            with ui.element("div").classes("search-segment"):
+                                with ui.column().classes("time-range-group"):
+                                    ui.label("Lost Time Range").classes("field-group-title")
+                                    with ui.row().classes("time-range-row"):
+                                        start_date = ui.select(options=date_options(), label="Start Date", value="").classes("time-select search-control").props("borderless")
+                                        start_hour = ui.select(options=hour_options(), label="Start Hour", value="").classes("time-select search-control").props("borderless")
+                                    with ui.row().classes("time-range-row"):
+                                        end_date = ui.select(options=date_options(), label="End Date", value="").classes("time-select search-control").props("borderless")
+                                        end_hour = ui.select(options=hour_options(), label="End Hour", value="").classes("time-select search-control").props("borderless")
+                            
+                            with ui.element("div").classes("search-segment"):
+                                lost_location = ui.select(
+                                    options=select_labels(LOCATION_OPTIONS), label="Lost Location", value="any"
+                                ).classes("w-full search-control").props("borderless")
+                            
+                            with ui.element("div").classes("search-segment"):
+                                result_limit = ui.number(
+                                    label="Number of Results", value=5, min=1, max=10, step=1
+                                ).classes("w-full search-control").props("borderless")
+                        
+                        with ui.row().classes("advanced-footer"):
+                            reset_button = ui.button("Reset Filters", icon="refresh").classes("secondary-action").props("flat no-caps")
 
                 with ui.row().classes("loading-row") as loading_row:
                     ui.spinner("dots", size="md", color="primary")
@@ -121,6 +105,17 @@ def _register_pages() -> None:
 
                 results_container = ui.column().classes("results-grid")
                 _render_empty_state(results_container)
+
+        # 交互逻辑
+        def toggle_advanced() -> None:
+            is_visible = not advanced_panel.visible
+            advanced_panel.set_visibility(is_visible)
+            if is_visible:
+                advanced_toggle.classes(add="active-filter", remove="filter-action")
+            else:
+                advanced_toggle.classes(add="filter-action", remove="active-filter")
+
+        advanced_toggle.on_click(toggle_advanced)
 
         async def handle_search() -> None:
             query_text = (description.value or "").strip()
