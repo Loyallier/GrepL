@@ -48,57 +48,64 @@ def _register_pages() -> None:
                         "intro-text"
                     )
 
-                with ui.element("div").classes("search-form-grid"):
-                    description = (
-                        ui.textarea(
-                            label="Item Description",
-                            placeholder="Example: blue bottle with stickers",
+                with ui.element("div").classes("search-bar"):
+                    with ui.element("div").classes("search-segment search-segment-description"):
+                        description = (
+                            ui.textarea(
+                                label="Item Description",
+                                placeholder="Example: blue bottle with stickers",
+                            )
+                            .classes("description-field search-control")
+                            .props("borderless autogrow clearable")
                         )
-                        .classes("description-field")
-                        .props("outlined autogrow clearable")
-                    )
-                    with ui.column().classes("time-range-group"):
-                        ui.label("Lost Time Range").classes("field-group-title")
-                        with ui.row().classes("time-range-row"):
-                            start_date = (
-                                ui.select(options=date_options(), label="Start Date", value="")
-                                .classes("time-select")
-                                .props("outlined")
+                    with ui.element("div").classes("search-segment search-segment-time"):
+                        with ui.column().classes("time-range-group"):
+                            ui.label("Lost Time Range").classes("field-group-title")
+                            with ui.row().classes("time-range-row"):
+                                start_date = (
+                                    ui.select(options=date_options(), label="Start Date", value="")
+                                    .classes("time-select search-control")
+                                    .props("borderless")
+                                )
+                                start_hour = (
+                                    ui.select(options=hour_options(), label="Start Hour", value="")
+                                    .classes("time-select search-control")
+                                    .props("borderless")
+                                )
+                            with ui.row().classes("time-range-row"):
+                                end_date = (
+                                    ui.select(options=date_options(), label="End Date", value="")
+                                    .classes("time-select search-control")
+                                    .props("borderless")
+                                )
+                                end_hour = (
+                                    ui.select(options=hour_options(), label="End Hour", value="")
+                                    .classes("time-select search-control")
+                                    .props("borderless")
+                                )
+                    with ui.element("div").classes("search-segment search-segment-location"):
+                        lost_location = (
+                            ui.select(
+                                options=select_labels(LOCATION_OPTIONS),
+                                label="Lost Location",
+                                value="any",
                             )
-                            start_hour = (
-                                ui.select(options=hour_options(), label="Start Hour", value="")
-                                .classes("time-select")
-                                .props("outlined")
-                            )
-                        with ui.row().classes("time-range-row"):
-                            end_date = (
-                                ui.select(options=date_options(), label="End Date", value="")
-                                .classes("time-select")
-                                .props("outlined")
-                            )
-                            end_hour = (
-                                ui.select(options=hour_options(), label="End Hour", value="")
-                                .classes("time-select")
-                                .props("outlined")
-                            )
-                    lost_location = (
-                        ui.select(
-                            options=select_labels(LOCATION_OPTIONS),
-                            label="Lost Location",
-                            value="any",
+                            .classes("w-full search-control")
+                            .props("borderless")
                         )
-                        .classes("w-full")
-                        .props("outlined")
-                    )
-                    result_limit = (
-                        ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
-                        .classes("w-full")
-                        .props("outlined")
-                    )
-
-                with ui.row().classes("action-row"):
-                    search_button = ui.button("Search", icon="search").classes("primary-action").props("unelevated no-caps")
-                    reset_button = ui.button("Reset", icon="refresh").classes("secondary-action").props("outline no-caps")
+                    with ui.element("div").classes("search-segment search-segment-limit"):
+                        result_limit = (
+                            ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
+                            .classes("w-full search-control")
+                            .props("borderless")
+                        )
+                    with ui.row().classes("action-row"):
+                        search_button = ui.button("Search", icon="search").classes("primary-action").props(
+                            "unelevated no-caps"
+                        )
+                        reset_button = ui.button("Reset", icon="refresh").classes("secondary-action").props(
+                            "flat no-caps"
+                        )
 
                 with ui.row().classes("loading-row") as loading_row:
                     ui.spinner("dots", size="md", color="primary")
