@@ -18,12 +18,6 @@ database, image matching, and ranking modules are ready, only
 The search result is a candidate match, not an object-recognition label. The UI
 must not display item names inferred from the matching model.
 
-Before text embedding, `src/query_refiner.py` cleans noisy user descriptions and
-returns a CLIP-friendly short query from English visual keywords. For example,
-`I probably lost a blue bottle with stickers near the library yesterday` is
-refined to `blue water bottle with stickers`. If the refiner cannot confidently
-extract visual terms, it keeps the original description as a fallback.
-
 ### Query (Input)
 
 ```python
@@ -85,8 +79,7 @@ class MatchResult:
 
 ```python
 items = database.load_items()
-refined_query = query_refiner.refine_query_for_clip(query.description)
-items_with_similarity = embedding_engine.match_text_to_images(refined_query.clip_text, items)
+items_with_similarity = embedding_engine.match_text_to_images(query.description, items)
 results = ranker.evaluate_matches(
     items_with_similarity,
     query.lost_time_range,
@@ -120,44 +113,18 @@ Establish a database for "Found Items".
     
 - **Function Prototype**: `detector.detect_objects(
   row_image_path: str) -> list[RowItem]` (一个组合函数，结合坐标推理和子图裁剪流程各自的函数)
-
-- **Bounding-box only Prototype**: `detector.detect_object_boxes(
-  row_image_path: str) -> list[DetectedObject]`
     
 - **Input Data** (`str`): The file path of the row image taken for the found items (e.g., `"./raw_images/room_302.jpg"`)
     
 - **Return Data (`list[RowItem]`)**:  
-`DetectedObject` 是成员 3 的直接输出，包含识别标签、检测置信度和原图像素坐标。
-`RowItem` 包含一张图片裁剪出所有子图的路径，便于后续对象逐一创建，以及对应子图的裁剪坐标和置信度。
+`RowItem` 包含一张图片裁剪出所有子图的路径，便于后续对象逐一创建。以及对应子图的裁剪坐标置信度
     ```python
-    @dataclass(frozen=True)
-    class BoundingBox:
-        x_min: int
-        y_min: int
-        x_max: int
-        y_max: int
-
-
-    @dataclass(frozen=True)
-    class DetectedObject:
-        label: str
-        confidence: float
-        bbox: BoundingBox
-
-
     @dataclass
     class RowItem:
         """ Initial found item information"""
         image_path: str
         bound_confidence: float
-        bbox: BoundingBox | None = None
-        label: str | None = None
     ```
-
-`detector.py` 优先支持 OpenCV DNN/MobileNet-SSD 风格模型。模型文件可通过参数
-`model_weights` / `model_config` 传入，也可通过环境变量
-`GREPL_DETECTOR_WEIGHTS` / `GREPL_DETECTOR_CONFIG` 配置。未配置模型文件时，
-模块会使用轻量前景区域检测作为 fallback，保证联调阶段仍能输出边界框坐标。
 
 
 ### 2.2 Image Vectorization & Registration Interface

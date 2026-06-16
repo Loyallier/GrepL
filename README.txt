@@ -7,7 +7,7 @@
 
 
 项目名称 (Project Title)
-    GrepL，校园失物招领智能匹配系统：基于轻量 NLP 查询重构 + CLIP 图文检索 + 时空辅助排序
+    GrepL，一个基于Tensorflow架构的AI驱动失物招领系统
 
 环境要求
     1. 基础 Python 环境
@@ -49,14 +49,3 @@
 
     如果提示 NiceGUI 未安装，请先执行：
         pip install -r requirements.txt
-
-查询重构说明
-    用户输入的英文自然语言描述会先经过 `src/query_refiner.py` 清洗，去除时间、
-    地点、不确定语气等非视觉信息，并尽量重写为适合 CLIP 检索的英文短文本。
-
-    示例：
-        I probably lost a blue bottle with stickers near the library yesterday
-        -> blue water bottle with stickers
-
-    如果系统无法稳定抽取颜色、物品类别或外观特征，会保留原始描述作为 fallback，
-    避免误删用户提供的有效信息。
