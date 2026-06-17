@@ -16,14 +16,20 @@ class SelectOption:
 
 LOCATION_OPTIONS: dict[str, SelectOption] = {
     "any": SelectOption("Any location"),
+    "a1": SelectOption("A1", ("a1",)),
+    "a2": SelectOption("A2", ("a2",)),
+    "a3_classroom": SelectOption("A3 Classroom", ("a3", "classroom")),
+    "a4": SelectOption("A4", ("a4",)),
+    "a5": SelectOption("A5", ("a5",)),
     "library": SelectOption("Library", ("library",)),
-    "library_entrance": SelectOption("Library entrance", ("library", "entrance")),
-    "cafeteria": SelectOption("Cafeteria", ("cafeteria",)),
-    "block_a": SelectOption("Block A", ("block", "a")),
-    "classroom": SelectOption("Classroom", ("classroom",)),
-    "sports_center": SelectOption("Sports center", ("sports", "center")),
-    "dormitory": SelectOption("Dormitory", ("dormitory",)),
-    "not_sure": SelectOption("Not sure"),
+    "playground": SelectOption("Playground", ("playground",)),
+    "b1": SelectOption("B1", ("b1",)),
+    "d_dormitory": SelectOption("D Block Dormitory", ("d", "dormitory")),
+    "d6_cafeteria": SelectOption("D6 Cafeteria", ("d6", "cafeteria")),
+    "ly_dormitory": SelectOption("LY Block Dormitory", ("ly", "dormitory")),
+    "ly3_cafeteria": SelectOption("LY3 Cafeteria", ("ly3", "cafeteria")),
+    "music_island": SelectOption("Music Island", ("music", "island")),
+    "not_sure": SelectOption("Not Sure")
 }
 
 
