@@ -225,7 +225,12 @@ src/mock_data.py
 
 # GrepL local artifacts
 data/crops/
-data/generated/
+data/generated/*
+!data/generated/found_items.json
+!data/generated/embedding_index.json
+!data/generated/embeddings/
+data/generated/embeddings/*
+!data/generated/embeddings/.gitkeep
 data/temp/
 screenshots/
 test-output/
