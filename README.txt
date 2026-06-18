@@ -31,7 +31,7 @@
     选项 B：Windows / Linux / Mac (仅使用 CPU 推理)
     如果你的机器没有 NVIDIA 显卡，或者你只需要运行模型完成简单的推理任务，直接安装 CPU 版本即可，无需配置 CUDA 驱动：
         pip install tensorflow-cpu>=2.18.0
-        pip install tensorflow-text>=2.18.0
+        pip install tensorflow-text>=2.18.0 (可选：Windows 上可能没有对应版本的 pip wheel；本项目的 CLIP 推理不强依赖该包)
 
     选项 C：Mac (Apple Silicon - M1/M2/M3/M4 芯片)
     Mac 芯片用户需要使用以下命令以获得由 Apple Metal API 提供的硬件加速：
@@ -51,3 +51,15 @@
 
     如果提示 NiceGUI 未安装，请先执行：
         pip install -r requirements.txt
+
+
+References & Attribution
+    项目灵感与接口设计参考（未直接复制外部代码，如有后续引用外部代码片段，会在对应文件中用注释注明来源 URL）：
+    - Project idea lists:
+      https://www.upgrad.com/blog/artificial-intelligence-projects-in-python/
+      https://careerkarma.com/blog/python-projects-beginners/
+    - CLIP / KerasHub documentation:
+      https://keras.io/api/keras_hub/models/clip/
+      https://github.com/keras-team/keras-hub
+    - NiceGUI documentation:
+      https://nicegui.io/documentation

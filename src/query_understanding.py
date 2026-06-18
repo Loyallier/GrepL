@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+# Concept reference (zero-shot label selection with CLIP text embeddings):
+# https://keras.io/api/keras_hub/models/clip/
+# https://github.com/keras-team/keras-hub
+
 from dataclasses import dataclass, field
 from functools import lru_cache
 import re

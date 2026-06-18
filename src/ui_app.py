@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+# UI framework reference:
+# https://nicegui.io/documentation
+
 import asyncio
 import os
 from pathlib import Path
