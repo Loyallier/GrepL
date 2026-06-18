@@ -22,7 +22,6 @@ from detector import detect_objects
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RAW_INFO_PATH = PROJECT_ROOT / "data" / "raw_found_image_info.json"
 DEFAULT_REGISTRY_PATH = PROJECT_ROOT / "data" / "generated" / "found_items.json"
-DEFAULT_RUN_LOG_PATH = PROJECT_ROOT / "data" / "generated" / "registration_runs.json"
 
 DetectorFunction = Callable[[str], list[RowItem]]
 
@@ -32,7 +31,6 @@ def register_pending_raw_found_items(
     raw_info_path: str | Path = DEFAULT_RAW_INFO_PATH,
     detector_fn: DetectorFunction = detect_objects,
     registry_path: str | Path = DEFAULT_REGISTRY_PATH,
-    run_log_path: str | Path = DEFAULT_RUN_LOG_PATH,
     register_embedding: bool = True,
 ) -> list[LostItem]:
     """Register every raw image record whose JSON status is ``pending``."""
@@ -45,8 +43,6 @@ def register_pending_raw_found_items(
         if record.get("status", "pending") != "pending":
             continue
 
-        raw_id = str(record.get("raw_id", ""))
-        started_at = _utc_now()
         try:
             raw_item = _raw_item_from_record(record)
             items = register_raw_found_item(
@@ -57,33 +53,14 @@ def register_pending_raw_found_items(
             )
             record["status"] = "processed"
             record["processed_at"] = _utc_now()
-            _append_run_log(
-                Path(run_log_path),
-                {
-                    "raw_id": raw_item.raw_id,
-                    "status": "processed",
-                    "item_count": len(items),
-                    "started_at": started_at,
-                    "finished_at": record["processed_at"],
-                    "error": None,
-                },
-            )
+            record["item_count"] = len(items)
+            record.pop("error", None)
             all_items.extend(items)
         except Exception as error:
             record["status"] = "failed"
             record["error"] = str(error)
             record["processed_at"] = _utc_now()
-            _append_run_log(
-                Path(run_log_path),
-                {
-                    "raw_id": raw_id,
-                    "status": "failed",
-                    "item_count": 0,
-                    "started_at": started_at,
-                    "finished_at": record["processed_at"],
-                    "error": str(error),
-                },
-            )
+            record["item_count"] = 0
 
     _write_json(raw_info, records)
     return all_items
@@ -123,7 +100,6 @@ def register_raw_found_item(
             row_item=row_item,
             embedding_registered=embedding_registered,
             registry_path=Path(registry_path),
-            raw_image_path=raw_item.image_path,
         )
         items.append(item)
 
@@ -168,14 +144,12 @@ def _append_local_record(
     row_item: RowItem,
     embedding_registered: bool,
     registry_path: Path,
-    raw_image_path: str,
 ) -> None:
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     records = _read_registry_records(registry_path)
     records.append(
         {
             **_lost_item_to_record(item),
-            "raw_image_path": raw_image_path,
             "embedding_registered": embedding_registered,
             "registered_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -243,12 +217,6 @@ def _raw_item_from_record(record: dict[str, object]) -> RawFoundItem:
             else None
         ),
     )
-
-
-def _append_run_log(run_log_path: Path, entry: dict[str, object]) -> None:
-    records = _read_json_list(run_log_path)
-    records.append(entry)
-    _write_json(run_log_path, records)
 
 
 def _read_json_list(path: Path) -> list[dict[str, object]]:
