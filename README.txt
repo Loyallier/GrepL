@@ -88,10 +88,8 @@
                 embedding_registered：该物品是否已经完成图像向量登记。
                 registered_at：该 LostItem 写入 found_items.json 的时间。
 
-        embedding_index.json：
-            存储 item_id 与向量文件之间的索引关系，方便根据物品编号找到对应向量文件
-
-        embeddings 文件夹：
-            存储图像向量化流程生成的 numpy 向量文件
-
+        image_embeddings.json：
+            存储图像向量化流程生成的向量数据。
+            当前 embedding_engine 会把每个 item_id 对应的图像向量、图片路径、模型信息和更新时间写入该文件。
+            该文件是当前版本实际使用的图像向量库。
 

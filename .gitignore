@@ -227,10 +227,7 @@ src/mock_data.py
 data/crops/
 data/generated/*
 !data/generated/found_items.json
-!data/generated/embedding_index.json
-!data/generated/embeddings/
-data/generated/embeddings/*
-!data/generated/embeddings/.gitkeep
+!data/generated/image_embeddings.json
 data/temp/
 screenshots/
 test-output/
