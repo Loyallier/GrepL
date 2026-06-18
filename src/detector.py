@@ -12,7 +12,7 @@ from contracts import RowItem
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CROP_DIR = PROJECT_ROOT / "data" / "cropped_items"
+DEFAULT_CROP_DIR = PROJECT_ROOT / "data" / "cropped_item_image"
 DEFAULT_CONFIDENCE_THRESHOLD = 0.35
 DEFAULT_MAX_OBJECTS = 10
 
@@ -88,7 +88,7 @@ def crop_detected_objects(
     Args:
         row_image_path: Raw found-item image path.
         object_boxes: Bounding boxes produced by the detection step.
-        Cropped sub-images are saved under data/cropped_items/.
+        Cropped sub-images are saved under data/cropped_item_image/.
 
     Returns:
         RowItem objects containing each cropped image path and detection
