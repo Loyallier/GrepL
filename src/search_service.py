@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from typing import Callable, Iterable
 
+<<<<<<< HEAD
 from config.options import LOCATION_OPTIONS, SelectOption
 from contracts import Candidate, LostItem, MatchResult, SearchQuery
 from ranker import evaluate_matches
@@ -14,6 +15,12 @@ DEFAULT_RESULT_LIMIT = 5
 MAX_RESULT_LIMIT = 10
 
 EmbeddingMatcher = Callable[[str, Iterable[LostItem]], Iterable[Candidate]]
+=======
+try:
+    from mock_data import mock_search_items  # type: ignore
+except ModuleNotFoundError:
+    from demo_data import mock_search_items
+>>>>>>> 29f2e28 (feat: add guided query analysis and confirmation flow for user-side search)
 
 
 def search_items(query: SearchQuery) -> list[MatchResult]:
@@ -24,9 +31,15 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
 
     normalized_query = SearchQuery(
         description=query.description.strip(),
+<<<<<<< HEAD
         lost_time_range=query.lost_time_range,
         lost_location=_clean_option(query.lost_location, LOCATION_OPTIONS),
         result_limit=_clean_result_limit(query.result_limit),
+=======
+        lost_time=_clean_optional(query.lost_time),
+        lost_location=_clean_optional(query.lost_location),
+        result_limit=max(1, min(int(query.result_limit), 10)),
+>>>>>>> 29f2e28 (feat: add guided query analysis and confirmation flow for user-side search)
         item_type_hint=_clean_optional(query.item_type_hint),
         color_hint=_clean_optional(query.color_hint),
         special_notes=[note.strip() for note in query.special_notes if note.strip()],
