@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from contracts import MatchResult, SearchQuery
 
-from mock_data import mock_search_items # 导入 mock，方便在没有算法时，前端依然可以单独运行测试（实现后删除）
+try:
+    from mock_data import mock_search_items  # type: ignore
+except ModuleNotFoundError:
+    from demo_data import mock_search_items
 
 
 def search_items(query: SearchQuery) -> list[MatchResult]:
@@ -31,6 +34,9 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
         lost_time=_clean_optional(query.lost_time),
         lost_location=_clean_optional(query.lost_location),
         result_limit=max(1, min(int(query.result_limit), 10)),
+        item_type_hint=_clean_optional(query.item_type_hint),
+        color_hint=_clean_optional(query.color_hint),
+        special_notes=[note.strip() for note in query.special_notes if note.strip()],
     )
     return mock_search_items(normalized_query)
 
