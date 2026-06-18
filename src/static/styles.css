@@ -243,6 +243,11 @@ body {
   background: #f1f5f9;
 }
 
+.tertiary-action {
+  min-width: 104px;
+  color: var(--muted);
+}
+
 .loading-row {
   align-items: center;
   gap: 10px;
@@ -632,6 +637,10 @@ body {
 
   .result-main {
     flex-direction: column;
+  }
+
+  .analysis-grid {
+    grid-template-columns: 1fr !important;
   }
 
   .item-image {
