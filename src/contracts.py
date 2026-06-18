@@ -29,6 +29,9 @@ class SearchQuery:
     lost_time_range: TimeRange | None = None
     lost_location: str | None = None
     result_limit: int = 20
+    item_type_hint: str | None = None
+    color_hint: str | None = None
+    special_notes: list[str] = field(default_factory=list)
 
 
 @dataclass

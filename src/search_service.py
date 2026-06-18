@@ -20,13 +20,16 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
     """Search registered found items and return ranked candidate matches."""
 
     if not query.description.strip():
-        return [] 
+        return []
 
     normalized_query = SearchQuery(
         description=query.description.strip(),
         lost_time_range=query.lost_time_range,
         lost_location=_clean_option(query.lost_location, LOCATION_OPTIONS),
         result_limit=_clean_result_limit(query.result_limit),
+        item_type_hint=_clean_optional(query.item_type_hint),
+        color_hint=_clean_optional(query.color_hint),
+        special_notes=[note.strip() for note in query.special_notes if note.strip()],
     )
 
     registered_items = _load_registered_items()
@@ -83,6 +86,13 @@ def _clean_result_limit(value: int | str | None) -> int:
         return max(1, min(int(value), MAX_RESULT_LIMIT))
     except (TypeError, ValueError):
         return DEFAULT_RESULT_LIMIT
+
+
+def _clean_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
 
 
 def _optional_module(module_name: str):
