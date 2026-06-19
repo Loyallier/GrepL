@@ -2,38 +2,73 @@
 
 from __future__ import annotations
 
-from contracts import MatchResult, SearchQuery
-from config.options import LOCATION_OPTIONS, SelectOption
+import importlib
+from typing import Callable, Iterable
 
-from mock_data import mock_search_items # 导入 mock，方便在没有算法时，前端依然可以单独运行测试（实现后删除）
+from config.options import LOCATION_OPTIONS, SelectOption
+from contracts import Candidate, LostItem, MatchResult, SearchQuery
+from ranker import evaluate_matches
+
+
+DEFAULT_RESULT_LIMIT = 5
+MAX_RESULT_LIMIT = 10
+
+EmbeddingMatcher = Callable[[str, Iterable[LostItem]], Iterable[Candidate]]
 
 
 def search_items(query: SearchQuery) -> list[MatchResult]:
-    """Search found items for a user query.
-
-    Current implementation returns mock data so the UI can be developed and
-    demonstrated before the TensorFlow and ranking modules are complete.
-
-    Future integration point:
-        items = database.load_items()
-        items_with_similarity = embedding_engine.match_text_to_images(query.description, items)
-        results = ranker.evaluate_matches(
-            items_with_similarity,
-            query.lost_time_range,
-            query.lost_location,
-            top_k=query.result_limit,
-        )
-    """
+    """Search registered found items and return ranked candidate matches."""
 
     if not query.description.strip():
-        return []
+        return [] 
+
     normalized_query = SearchQuery(
         description=query.description.strip(),
         lost_time_range=query.lost_time_range,
         lost_location=_clean_option(query.lost_location, LOCATION_OPTIONS),
-        result_limit=max(1, min(int(query.result_limit), 10)),
+        result_limit=_clean_result_limit(query.result_limit),
     )
-    return mock_search_items(normalized_query)
+
+    registered_items = _load_registered_items()
+    if not registered_items:
+        return []
+
+    matcher = _load_embedding_matcher() 
+    if matcher is None:
+        return []
+
+    candidates = _match_text_to_images(matcher, normalized_query.description, registered_items)
+    return evaluate_matches(candidates, normalized_query)
+
+
+def _load_registered_items() -> list[LostItem]:
+    registration_service = _optional_module("registration_service")
+    if registration_service is None:
+        return []
+
+    loader = getattr(registration_service, "load_registered_items", None)
+    if not callable(loader):
+        return []
+    return list(loader()) 
+
+
+def _load_embedding_matcher() -> EmbeddingMatcher | None:
+    embedding_engine = _optional_module("embedding_engine")
+    if embedding_engine is None:
+        return None
+
+    matcher = getattr(embedding_engine, "match_text_to_images", None)
+    if not callable(matcher):
+        return None
+    return matcher
+
+
+def _match_text_to_images(
+    matcher: EmbeddingMatcher,
+    description: str,
+    registered_items: Iterable[LostItem],
+) -> list[Candidate]:
+    return list(matcher(description, registered_items))
 
 
 def _clean_option(value: str | None, options: dict[str, SelectOption]) -> str:
@@ -41,3 +76,21 @@ def _clean_option(value: str | None, options: dict[str, SelectOption]) -> str:
         return "any"
     cleaned = value.strip()
     return cleaned if cleaned in options else "any"
+
+
+def _clean_result_limit(value: int | str | None) -> int:
+    try:
+        return max(1, min(int(value), MAX_RESULT_LIMIT))
+    except (TypeError, ValueError):
+        return DEFAULT_RESULT_LIMIT
+
+
+def _optional_module(module_name: str):
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError as error:
+        if error.name == module_name:
+            return None
+        raise
+
+

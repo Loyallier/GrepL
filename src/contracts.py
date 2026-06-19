@@ -41,7 +41,7 @@ class LostItem:
     found_location: str | None
     bound_confidence: float
     raw_id: str | None = None
-    category: str | None = None
+    category: str | None = None  # Unknown attritube
 
 
 @dataclass
@@ -86,14 +86,6 @@ class RegisterItem:
 
     item_id: str
     image_path: str
-
-
-@dataclass
-class ClipResult:
-    """ The comparison result returned from embedding_engine.py. """
-
-    item_id: str
-    visual_similarity: float
 
 
 @dataclass
