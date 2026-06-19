@@ -1,0 +1,1 @@
+"""Configuration dictionaries for GrepL."""

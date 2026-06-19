@@ -1,84 +1,220 @@
-import numpy as np
-import tensorflow as tf
+"""TF-CLIP embedding engine for GrepL.
+
+This module owns the CLIP retrieval unit used by the registration and ranking
+pipelines:
+
+- encode_text(): user description -> normalized text vector
+- encode_image(): cropped item image -> normalized image vector
+- register_item_image(): persist image vectors for registered found items
+- match_text_to_images(): compute visual_similarity and return Candidate objects
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable
+
+os.environ.setdefault("KERAS_BACKEND", "tensorflow")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+
 import keras
-import keras_hub
+import numpy as np
 from PIL import Image
+from tfclip import create_model_and_transforms
 
-# 严格导入组员定义的规范数据契约
-from contracts import LostItem
+from contracts import Candidate, LostItem, RegisterItem
 
-# URL Reference: https://keras.io/api/keras_hub/models/clip/
-# URL Reference: https://github.com/keras-team/keras-hub
 
-class CLIPEmbeddingEngine:
-    def __init__(self, model_name="clip_vit_base_patch32"):
-        """
-        初始化：基于 Keras 3 / KerasHub 的多模态对齐引擎
-        完美适配全组统一的 tensorflow>=2.18.0 生态
-        """
-        print(f"[Engine] Loading KerasHub CLIP model: {model_name}...")
-        self.model = keras_hub.models.CLIPBackbone.from_preset(model_name)
-        self.processor = keras_hub.models.CLIPPreprocessor.from_pretrained(model_name)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_EMBEDDING_STORE = PROJECT_ROOT / "data" / "generated" / "image_embeddings.json"
+DEFAULT_LOCAL_WEIGHTS = PROJECT_ROOT / "data" / "weights" / "tfclip_vit_b_32_laion.h5"
 
-    def extract_image_features(self, image_path: str):
-        """
-        【提取单张图片向量的内部工具函数】
-        输入：单个图片路径
-        输出：512维 L2 归一化后的特征向量 (numpy 数组)
-        """
-        try:
-            image = Image.open(image_path).convert("RGB")
-            image_np = np.array(image.resize((224, 224)), dtype=np.float32)
-            image_tensor = tf.expand_dims(image_np, axis=0)
-            
-            # KerasHub 驱动 CLIP 视觉骨干网络前向传播
-            # URL Reference: https://keras.io/api/keras_hub/models/clip/#get_image_features-method
-            outputs = self.model.get_image_features(image_tensor)
-            
-            raw_vector = outputs.numpy()[0]
-            # 严格执行 L2 归一化约束，确保后面直接点积算余弦相似度
-            return raw_vector / np.linalg.norm(raw_vector)
-        except Exception as e:
-            print(f"[Engine Error] Failed to process image {image_path}: {e}")
-            return None
+MODEL_NAME = os.environ.get("GREPL_TFCLIP_MODEL_NAME", "ViT-B-32")
+PRETRAINED = os.environ.get("GREPL_TFCLIP_PRETRAINED", "laion2b_s34b_b79k")
+WEIGHTS_PATH = os.environ.get("GREPL_TFCLIP_WEIGHTS_PATH")
 
-    def match_text_to_images(self, text_description: str, lost_items: list[LostItem]) -> list[dict]:
-        """
-        【核心集成接口】对接 search_service.py 中的核心调用点
-        由 5 号（lyy）和 6 号（ync）联合输出
-        
-        输入：
-          - text_description: 1号从 UI 收集的用户描述字符串
-          - lost_items: 包含 LostItem 规范对象的列表（来自 database 加载）
-        输出：
-          - 返回给 2 号（slk）的中间列表，每个元素包含 LostItem 对象和计算出的 visual_similarity
-        """
-        # --- 1. 【成员 5 (lyy) 文本分支】 ---
-        # 媛媛提取文本向量并执行 L2 归一化
-        text_inputs = self.processor([text_description])
-        text_outputs = self.model.get_text_features(text_inputs)
-        text_vector = text_outputs.numpy()[0]
-        text_vector = text_vector / np.linalg.norm(text_vector)
+_model = None
+_image_preprocess = None
+_text_preprocess = None
+_text_encoder = None
+_image_encoder = None
 
-        # --- 2. 【成员 6 (ync) 图像与比对分支】 ---
-        items_with_similarity = []
-        
-        # 满足课程评分标准：使用 for 循环结构遍历 LostItem 对象集合
-        for item in lost_items:
-            # 从组员定义的 dataclass 中安全获取 image_path
-            img_vector = self.extract_image_features(item.image_path)
-            
-            if img_vector is not None:
-                # 计算余弦相似度：双端已 L2 归一化，点积即为余弦值
-                visual_similarity = float(np.dot(text_vector, img_vector))
-            else:
-                visual_similarity = 0.0 # 图片损坏或无法读取时的兜底处理
-                
-            # 封装并追加，准备交给 2 号（slk）进行时空融合计算
-            # 2 号会拿到这个 visual_similarity 去填满最后的 MatchResult 对象
-            items_with_similarity.append({
-                "item": item,
-                "visual_similarity": round(visual_similarity, 4)
-            })
-            
-        return items_with_similarity
+
+def encode_text(description: str) -> np.ndarray:
+    """Convert one user description into a 512-dimensional normalized vector."""
+    text = description.strip()
+    if not text:
+        raise ValueError("description must not be empty")
+
+    _ensure_model_loaded()
+    tokens = _text_preprocess([text])
+    vector = np.asarray(_text_encoder(tokens, training=False).numpy()[0], dtype="float32")
+    return _l2_normalize(vector)
+
+
+def encode_image(image_path: str | Path) -> np.ndarray:
+    """Convert one cropped found-item image into a normalized image vector."""
+    path = Path(image_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"image does not exist: {path}")
+
+    _ensure_model_loaded()
+    with Image.open(path) as image:
+        image_array = np.asarray(image.convert("RGB"), dtype=np.uint8)
+
+    image_tensor = _image_preprocess(image_array)[None]
+    vector = np.asarray(_image_encoder(image_tensor, training=False).numpy()[0], dtype="float32")
+    return _l2_normalize(vector)
+
+
+def register_item_image(
+    registering_item: RegisterItem,
+    *,
+    store_path: str | Path = DEFAULT_EMBEDDING_STORE,
+) -> bool:
+    """Encode and persist an item's image embedding for later retrieval."""
+    vector = encode_image(registering_item.image_path)
+    store_file = Path(store_path)
+    store = _read_embedding_store(store_file)
+    store[registering_item.item_id] = {
+        "item_id": registering_item.item_id,
+        "image_path": str(registering_item.image_path),
+        "model_name": MODEL_NAME,
+        "pretrained": PRETRAINED,
+        "dimension": int(vector.shape[0]),
+        "embedding": vector.tolist(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _write_embedding_store(store_file, store)
+    return True
+
+
+def match_text_to_images(
+    description: str,
+    items: Iterable[LostItem],
+    *,
+    store_path: str | Path = DEFAULT_EMBEDDING_STORE,
+) -> list[Candidate]:
+    """Compare user text with found-item images and return ranker candidates."""
+    text_vector = encode_text(description)
+    store_file = Path(store_path)
+    store = _read_embedding_store(store_file)
+    candidates: list[Candidate] = []
+    store_changed = False
+
+    for item in items:
+        image_vector = _embedding_for_item(item, store)
+        if image_vector is None:
+            image_vector = encode_image(item.image_path)
+            store[item.item_id] = {
+                "item_id": item.item_id,
+                "image_path": item.image_path,
+                "model_name": MODEL_NAME,
+                "pretrained": PRETRAINED,
+                "dimension": int(image_vector.shape[0]),
+                "embedding": image_vector.tolist(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            store_changed = True
+
+        cosine = float(np.dot(text_vector, image_vector))
+        visual_similarity = _cosine_to_unit_interval(cosine)
+        candidates.append(
+            Candidate(
+                item_id=item.item_id,
+                image_path=item.image_path,
+                found_time=item.found_time,
+                found_location=item.found_location,
+                visual_similarity=visual_similarity,
+                bound_confidence=float(item.bound_confidence),
+            )
+        )
+
+    if store_changed:
+        _write_embedding_store(store_file, store)
+
+    candidates.sort(key=lambda candidate: candidate.visual_similarity, reverse=True)
+    return candidates
+
+
+def _ensure_model_loaded() -> None:
+    global _model, _image_preprocess, _text_preprocess, _text_encoder, _image_encoder
+
+    if _model is not None:
+        return
+
+    kwargs: dict[str, Any] = {}
+    weights_path = _resolve_weights_path()
+    if weights_path is not None:
+        kwargs["weights_path"] = str(weights_path)
+
+    _model, _image_preprocess, _text_preprocess = create_model_and_transforms(
+        MODEL_NAME,
+        pretrained=PRETRAINED,
+        **kwargs,
+    )
+    _text_encoder = keras.Model(
+        inputs=_model.inputs[1],
+        outputs=_model.get_layer("text_head_out").output,
+        name="grepl_tfclip_text_encoder",
+    )
+    _image_encoder = keras.Model(
+        inputs=_model.inputs[0],
+        outputs=_model.get_layer("vision_head_out").output,
+        name="grepl_tfclip_image_encoder",
+    )
+
+
+def _resolve_weights_path() -> Path | None:
+    if WEIGHTS_PATH:
+        path = Path(WEIGHTS_PATH)
+        if path.is_file():
+            return path
+        raise FileNotFoundError(f"GREPL_TFCLIP_WEIGHTS_PATH does not exist: {path}")
+    if DEFAULT_LOCAL_WEIGHTS.is_file():
+        return DEFAULT_LOCAL_WEIGHTS
+    return None
+
+
+def _embedding_for_item(item: LostItem, store: dict[str, dict[str, Any]]) -> np.ndarray | None:
+    record = store.get(item.item_id)
+    if not record:
+        return None
+    if str(record.get("image_path")) != str(item.image_path):
+        return None
+    embedding = record.get("embedding")
+    if not isinstance(embedding, list):
+        return None
+    vector = np.asarray(embedding, dtype="float32")
+    if vector.ndim != 1 or vector.size == 0:
+        return None
+    return _l2_normalize(vector)
+
+
+def _read_embedding_store(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.is_file():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Embedding store must be a JSON object: {path}")
+    return {str(key): value for key, value in data.items() if isinstance(value, dict)}
+
+
+def _write_embedding_store(path: Path, store: dict[str, dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _l2_normalize(vector: np.ndarray) -> np.ndarray:
+    norm = float(np.linalg.norm(vector))
+    if norm <= 1e-12:
+        return vector.astype("float32")
+    return (vector / norm).astype("float32")
+
+
+def _cosine_to_unit_interval(cosine: float) -> float:
+    return round(max(0.0, min(1.0, (cosine + 1.0) / 2.0)), 4)
+

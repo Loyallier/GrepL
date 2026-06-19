@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+﻿# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
@@ -219,13 +219,21 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Don't touch锛宩ust for local testing
+data/demo/
+src/mock_data.py
+
 # GrepL local artifacts
 data/crops/
-data/demo/
-data/generated/
+data/generated/*
+!data/generated/found_items.json
+!data/generated/image_embeddings.json
 data/temp/
 screenshots/
 test-output/
 models/
 .cache/
-src/mock_data.py
+data/weights/
+*.h5
+*.weights
+scripts/test_embedding_engine.py

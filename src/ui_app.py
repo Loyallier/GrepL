@@ -11,8 +11,9 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from contracts import MatchResult, SearchQuery
-from query_understanding import QueryAnalysis, analyze_query
+from mock_data import DEMO_ASSET_DIR
+from config.options import LOCATION_OPTIONS, date_options, hour_options, option_label, select_labels
+from contracts import MatchResult, SearchQuery, TimePoint, TimeRange
 from search_service import search_items
 
 try:
@@ -49,46 +50,71 @@ def _register_pages() -> None:
 
         with ui.element("main").classes("app-shell"):
             with ui.element("section").classes("search-panel"):
-                ui.label("GrepL").classes("brand")
-                ui.label("Campus Lost & Found").classes("page-title")
-                ui.label("Describe your lost item and review the most likely matches from the found-item library.").classes(
-                    "intro-text"
-                )
+                with ui.element("div").classes("search-copy"):
+                    ui.label("GrepL").classes("brand")
+                    ui.label("Campus Lost & Found").classes("page-title")
+                    ui.label("Describe your lost item and review candidate matches from the found-item library.").classes(
+                        "intro-text"
+                    )
 
-                description = (
-                    ui.textarea(
-                        label="Item Description",
-                        placeholder="Example: blue water bottle with stickers",
-                    )
-                    .classes("w-full")
-                    .props("outlined autogrow clearable")
-                )
-                lost_time = (
-                    ui.input(
-                        label="Lost Time",
-                        placeholder="Example: yesterday afternoon",
-                    )
-                    .classes("w-full")
-                    .props("outlined clearable")
-                )
-                lost_location = (
-                    ui.input(
-                        label="Lost Location",
-                        placeholder="Example: library",
-                    )
-                    .classes("w-full")
-                    .props("outlined clearable")
-                )
-                result_limit = (
-                    ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
-                    .classes("w-full")
-                    .props("outlined")
-                )
-
-                with ui.row().classes("action-row"):
-                    analyze_button = ui.button("Analyze", icon="psychology").classes("secondary-action").props("outline no-caps")
-                    search_button = ui.button("Search", icon="search").classes("primary-action").props("unelevated no-caps")
-                    reset_button = ui.button("Reset", icon="refresh").classes("tertiary-action").props("outline no-caps")
+                with ui.element("div").classes("search-bar"):
+                    with ui.element("div").classes("search-segment search-segment-description"):
+                        description = (
+                            ui.textarea(
+                                label="Item Description",
+                                placeholder="Example: blue bottle with stickers",
+                            )
+                            .classes("description-field search-control")
+                            .props("borderless autogrow clearable")
+                        )
+                    with ui.element("div").classes("search-segment search-segment-time"):
+                        with ui.column().classes("time-range-group"):
+                            ui.label("Lost Time Range").classes("field-group-title")
+                            with ui.row().classes("time-range-row"):
+                                start_date = (
+                                    ui.select(options=date_options(), label="Start Date", value="")
+                                    .classes("time-select search-control")
+                                    .props("borderless")
+                                )
+                                start_hour = (
+                                    ui.select(options=hour_options(), label="Start Hour", value="")
+                                    .classes("time-select search-control")
+                                    .props("borderless")
+                                )
+                            with ui.row().classes("time-range-row"):
+                                end_date = (
+                                    ui.select(options=date_options(), label="End Date", value="")
+                                    .classes("time-select search-control")
+                                    .props("borderless")
+                                )
+                                end_hour = (
+                                    ui.select(options=hour_options(), label="End Hour", value="")
+                                    .classes("time-select search-control")
+                                    .props("borderless")
+                                )
+                    with ui.element("div").classes("search-segment search-segment-location"):
+                        lost_location = (
+                            ui.select(
+                                options=select_labels(LOCATION_OPTIONS),
+                                label="Lost Location",
+                                value="any",
+                            )
+                            .classes("w-full search-control")
+                            .props("borderless")
+                        )
+                    with ui.element("div").classes("search-segment search-segment-limit"):
+                        result_limit = (
+                            ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
+                            .classes("w-full search-control")
+                            .props("borderless")
+                        )
+                    with ui.row().classes("action-row"):
+                        search_button = ui.button("Search", icon="search").classes("primary-action").props(
+                            "unelevated no-caps"
+                        )
+                        reset_button = ui.button("Reset", icon="refresh").classes("secondary-action").props(
+                            "flat no-caps"
+                        )
 
                 with ui.row().classes("loading-row") as loading_row:
                     ui.spinner("dots", size="md", color="primary")
@@ -116,7 +142,7 @@ def _register_pages() -> None:
             with ui.element("section").classes("results-panel"):
                 with ui.row().classes("results-header"):
                     with ui.column().classes("header-copy"):
-                        ui.label("Match Results").classes("section-title")
+                        ui.label("Candidate Matches").classes("section-title")
                         status_label = ui.label("Enter a description to begin.").classes("status-text")
                     ui.icon("inventory_2").classes("header-icon")
 
@@ -201,8 +227,13 @@ def _register_pages() -> None:
             try:
                 query = SearchQuery(
                     description=query_text,
-                    lost_time=confirmed_time.value,
-                    lost_location=confirmed_location.value,
+                    lost_time_range=_build_time_range(
+                        start_date.value,
+                        start_hour.value,
+                        end_date.value,
+                        end_hour.value,
+                    ),
+                    lost_location=lost_location.value or "any",
                     result_limit=int(result_limit.value or 5),
                     item_type_hint=(item_type_hint.value or "").strip() or None,
                     color_hint=(color_hint.value or "").strip() or None,
@@ -215,7 +246,7 @@ def _register_pages() -> None:
                     _render_results(results_container, results)
                 else:
                     status_label.text = "No matches found."
-                    _render_empty_state(results_container, "No matches yet", "Try adding a color, item type, or location.")
+                    _render_empty_state(results_container, "No candidates yet", "Try adding a color, visual feature, or location.")
             except Exception:
                 status_label.text = "Search failed."
                 results_container.clear()
@@ -229,8 +260,11 @@ def _register_pages() -> None:
             nonlocal latest_analysis
             latest_analysis = None
             description.value = ""
-            lost_time.value = ""
-            lost_location.value = ""
+            start_date.value = ""
+            start_hour.value = ""
+            end_date.value = ""
+            end_hour.value = ""
+            lost_location.value = "any"
             result_limit.value = 5
             item_type_hint.value = ""
             color_hint.value = ""
@@ -274,7 +308,8 @@ def _render_result_card(index: int, result: MatchResult) -> None:
                 with ui.row().classes("result-topline"):
                     ui.label(f"#{index}").classes("rank-badge")
                     ui.label(result.confidence_label).classes(_confidence_class(result.confidence_label))
-                ui.label(result.title).classes("item-title")
+                ui.label(f"Candidate #{index}").classes("item-title")
+                ui.label("Review this item visually before claiming it.").classes("candidate-note")
                 ui.label(_found_summary(result)).classes("item-meta")
 
                 with ui.row().classes("score-row"):
@@ -318,6 +353,33 @@ def _render_error_state(container: ui.column) -> None:
             ui.label("Please try again or check whether the backend modules are available.").classes("empty-detail")
 
 
+def _build_time_range(
+    start_date: str | None,
+    start_hour: str | int | None,
+    end_date: str | None,
+    end_hour: str | int | None,
+) -> TimeRange | None:
+    start = _build_time_point(start_date, start_hour)
+    end = _build_time_point(end_date, end_hour)
+    if start is None and end is None:
+        return None
+    return TimeRange(start=start, end=end)
+
+
+def _build_time_point(selected_date: str | None, selected_hour: str | int | None) -> TimePoint | None:
+    date_value = selected_date or None
+    hour_value = _selected_hour_to_int(selected_hour)
+    if date_value is None and hour_value is None:
+        return None
+    return TimePoint(date=date_value, hour=hour_value)
+
+
+def _selected_hour_to_int(value: str | int | None) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
 def _image_url(image_path: str) -> str | None:
     path = Path(image_path)
     if not path.is_file():
@@ -330,21 +392,21 @@ def _image_url(image_path: str) -> str | None:
 
 
 def _found_summary(result: MatchResult) -> str:
-    time_text = result.found_time or "Time unknown"
-    location_text = result.found_location or "Location unknown"
+    time_text = _format_time_point(result.found_time)
+    location_text = option_label(result.found_location, LOCATION_OPTIONS) or result.found_location or "Location unknown"
     return f"Found at {location_text} · {time_text}"
 
 
-def _build_status_message(query: SearchQuery, result_count: int) -> str:
-    details: list[str] = []
-    if query.item_type_hint:
-        details.append(query.item_type_hint)
-    if query.color_hint:
-        details.append(query.color_hint.lower())
-    if query.special_notes:
-        details.append("special marks")
-    detail_suffix = f" using {', '.join(details)}" if details else ""
-    return f"Showing {result_count} possible match{'es' if result_count != 1 else ''}{detail_suffix}."
+def _format_time_point(time_point: TimePoint | None) -> str:
+    if time_point is None:
+        return "Time unknown"
+    if time_point.date and time_point.hour is not None:
+        return f"{time_point.date} {time_point.hour:02d}:00"
+    if time_point.date:
+        return time_point.date
+    if time_point.hour is not None:
+        return f"{time_point.hour:02d}:00"
+    return "Time unknown"
 
 
 def _percent(value: float) -> str:

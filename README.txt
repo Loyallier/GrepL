@@ -46,11 +46,53 @@
 浏览器界面说明
     当前项目提供 NiceGUI 浏览器界面，运行后会打开本地网页：
         python main.py
-    或：
-        python src/main.py
 
     如果提示 NiceGUI 未安装，请先执行：
         pip install -r requirements.txt
+
+数据库说明
+    data 文件夹作为当前项目的数据库，负责保存原始图片信息、裁剪后的物品图片、
+    可搜索物品记录，以及图像向量化相关文件和索引信息。
+
+    raw_found_images 文件夹：
+        存储未经过裁剪的原始图片，就是一批同时被找到物品的合照
+
+    raw_found_image_info.json：
+        存储原始图片对应的入库信息，对应 RawFoundItem，每条记录对应一张原始图片
+        主要字段包括：
+            raw_id：原始图片编号
+            image_path：原始图片路径
+            found_time：这一批物品被找到的时间
+            found_location：这一批物品被找到的位置
+            status：原图处理状态，比如 pending
+            processed_at：登记中控处理完成后写入的时间
+            item_count：这张原图最终生成的 LostItem 数量
+            error：仅在处理失败时写入错误信息。
+
+    cropped_item_image 文件夹：
+        存储 detector 从原始图片中裁剪出的单个物品图片
+
+    generated 文件夹：
+        存储登记、搜索和向量化流程中生成的中间产物和结果文件。
+
+        found_items.json：
+            存储已经完成登记、可以被搜索的 LostItem 记录，每条记录对应一个裁剪后的单个物品
+            主要字段包括：
+                item_id：单个可搜索物品的唯一编号
+                raw_id：对应该物品来源于哪一张原始图片
+                image_path：裁剪后单个物品图片的路径
+                found_time：继承自 RawFoundItem 的 found_time
+                found_location：继承自 RawFoundItem 的 found_location
+                bound_confidence：检测模型裁剪该物品区域的置信度
+                category：可选的单个物品分类，可能是一个多余的属性
+                embedding_registered：该物品是否已经完成图像向量登记。
+                registered_at：该 LostItem 写入 found_items.json 的时间。
+
+        image_embeddings.json：
+            存储图像向量化流程生成的向量数据。
+            当前 embedding_engine 会把每个 item_id 对应的图像向量、图片路径、模型信息和更新时间写入该文件。
+            该文件是当前版本实际使用的图像向量库。
+
 
 
 References & Attribution

@@ -6,11 +6,27 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class TimePoint:
+    """An optional objective time point selected from the UI."""
+
+    date: str | None = None
+    hour: int | None = None
+
+
+@dataclass
+class TimeRange:
+    """An optional objective time range selected from the UI."""
+
+    start: TimePoint | None = None
+    end: TimePoint | None = None
+
+
+@dataclass
 class SearchQuery:
     """User search input collected from the browser interface."""
 
     description: str
-    lost_time: str | None = None
+    lost_time_range: TimeRange | None = None
     lost_location: str | None = None
     result_limit: int = 20
     item_type_hint: str | None = None
@@ -23,10 +39,11 @@ class LostItem:
     """A found item stored by the lost-and-found system."""
 
     item_id: str
-    title: str
     image_path: str
-    found_time: str | None
+    found_time: TimePoint | None
     found_location: str | None
+    bound_confidence: float
+    raw_id: str | None = None
     category: str | None = None
 
 
@@ -35,14 +52,60 @@ class MatchResult:
     """A ranked match returned to the UI."""
 
     item_id: str
-    title: str
     image_path: str
-    found_time: str | None
+    found_time: TimePoint | None
     found_location: str | None
     visual_similarity: float
-    time_match: float
-    location_match: float
+    time_match: float | None
+    location_match: float | None
     overall_match: float
     confidence_label: str
     reasons: list[str] = field(default_factory=list)
     mismatch_notes: list[str] = field(default_factory=list)
+
+
+
+@dataclass
+class RawFoundItem:
+    """A raw found-item photo containing one or more physical items."""
+
+    raw_id: str
+    image_path: str
+    found_time: TimePoint | None
+    found_location: str | None
+
+
+@dataclass
+class RowItem:
+    """ Initial information for each identified item from one picture. """
+
+    image_path: str
+    bound_confidence: float
+
+
+@dataclass
+class RegisterItem:
+    """ To encapsulate all information required for the cropped image of an item to being converts into an image embedding vector. """
+
+    item_id: str
+    image_path: str
+
+
+@dataclass
+class ClipResult:
+    """ The comparison result returned from embedding_engine.py. """
+
+    item_id: str
+    visual_similarity: float
+
+
+@dataclass
+class Candidate:
+    """ Transfor item information required for ranker.py. """
+
+    item_id: str
+    image_path: str
+    found_time: TimePoint | None
+    found_location: str | None 
+    visual_similarity: float 
+    bound_confidence: float

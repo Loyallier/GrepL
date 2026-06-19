@@ -5,3 +5,6 @@ numpy>=1.26.0,<2.1.0
 ftfy>=6.3.1
 nicegui>=2.0,<3.0
 Pillow>=10.0
+tfclip==2.0.0
+tensorflow==2.18.0
+# tensorflow-text==2.18.0  # Required by tfclip on platforms with a compatible wheel.
