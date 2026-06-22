@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from contracts import MatchResult, SearchQuery
+from config.options import LOCATION_OPTIONS, option_keywords
+from contracts import MatchResult, SearchQuery, TimePoint
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,66 +16,64 @@ DEMO_ASSET_DIR = PROJECT_ROOT / "data" / "demo"
 @dataclass(frozen=True)
 class _DemoItem:
     item_id: str
-    title: str
+    image_path: str
     category: str
     color: str
-    found_time: str
-    found_location: str
+    found_time: TimePoint | None
+    found_location: str | None
     special_notes: list[str]
 
 
 _DEMO_ITEMS = [
     _DemoItem(
         item_id="F001",
-        title="Blue Water Bottle With Sticker",
+        image_path="",
         category="Bottle",
         color="Blue",
-        found_time="Yesterday afternoon",
-        found_location="Library",
-        special_notes=["Has cartoon sticker", "Standard bottle shape"],
+        found_time=TimePoint(date="2026-06-17", hour=14),
+        found_location="library",
+        special_notes=["sticker", "cartoon"],
     ),
     _DemoItem(
         item_id="F002",
-        title="Black Keychain Set",
+        image_path="",
         category="Keys",
         color="Black",
-        found_time="This morning",
-        found_location="Cafeteria",
-        special_notes=["Metal keychain ring", "One card holder attached"],
+        found_time=TimePoint(date="2026-06-18", hour=9),
+        found_location="d6_cafeteria",
+        special_notes=["keychain", "metal ring"],
     ),
     _DemoItem(
         item_id="F003",
-        title="White Earbuds Case",
+        image_path="",
         category="Earphones",
         color="White",
-        found_time="Yesterday evening",
-        found_location="Classroom",
-        special_notes=["Charging case only", "Small scratch on the lid"],
+        found_time=TimePoint(date="2026-06-17", hour=20),
+        found_location="a3_classroom",
+        special_notes=["case", "scratch"],
     ),
     _DemoItem(
         item_id="F004",
-        title="Purple Student Card Holder",
+        image_path="",
         category="Student Card",
         color="Purple",
-        found_time="Today",
-        found_location="Dormitory",
-        special_notes=["Campus card inside", "Transparent holder"],
+        found_time=TimePoint(date="2026-06-18", hour=11),
+        found_location="d_dormitory",
+        special_notes=["card holder"],
     ),
     _DemoItem(
         item_id="F005",
-        title="Brown Wallet",
+        image_path="",
         category="Wallet",
         color="Brown",
-        found_time="Last night",
-        found_location="Sports Centre",
-        special_notes=["Leather texture", "Contains a name tag"],
+        found_time=TimePoint(date="2026-06-17", hour=22),
+        found_location="playground",
+        special_notes=["leather", "name tag"],
     ),
 ]
 
 
 def mock_search_items(query: SearchQuery) -> list[MatchResult]:
-    """Return demo ranking results driven by the confirmed query hints."""
-
     ranked = sorted(
         (_build_result(query, item) for item in _DEMO_ITEMS),
         key=lambda result: result.overall_match,
@@ -84,53 +83,65 @@ def mock_search_items(query: SearchQuery) -> list[MatchResult]:
 
 
 def _build_result(query: SearchQuery, item: _DemoItem) -> MatchResult:
-    raw_text = query.description.lower()
-    visual_score = 0.46
-    reasons = ["Original query is preserved for matching."]
+    search_text = (query.search_text or query.description).lower()
+    visual_score = 0.42
+    reasons: list[str] = ["Uses the reconstructed query hints for matching."]
 
-    if item.category.lower() in raw_text:
-        visual_score += 0.12
-        reasons.append(f"Raw description directly mentions a {item.category.lower()}.")
+    if item.category.lower() in search_text:
+        visual_score += 0.18
+        reasons.append("Reconstructed query mentions the item category.")
     if query.item_type_hint and query.item_type_hint == item.category:
-        visual_score += 0.2
-        reasons.append(f"Confirmed item type matches {item.category.lower()}.")
+        visual_score += 0.18
+        reasons.append("Confirmed item type matches this candidate.")
     if query.color_hint and query.color_hint == item.color:
-        visual_score += 0.1
-        reasons.append(f"Confirmed color matches {item.color.lower()}.")
+        visual_score += 0.12
+        reasons.append("Confirmed color matches this candidate.")
+
+    component_bonus = 0.0
+    for part, color in (query.component_color_hints or {}).items():
+        if part in search_text and color.lower() in search_text:
+            component_bonus += 0.03
+    if component_bonus:
+        reasons.append("Color-part binding hints are consistent with the query.")
 
     special_bonus = 0.0
     for note in query.special_notes:
-        if _notes_overlap(note, item.special_notes):
-            special_bonus += 0.05
+        if note.lower() in search_text:
+            special_bonus += 0.03
     if special_bonus:
-        reasons.append("Special mark hints overlap with the found-item notes.")
+        reasons.append("Special mark hints appear in the query.")
 
-    time_match = 0.4
-    if query.lost_time and query.lost_time.lower() in item.found_time.lower():
-        time_match = 0.92
-        reasons.append("Found time is close to the reported lost time.")
+    time_match = 0.35
+    if query.lost_time_range and item.found_time and query.lost_time_range.start and query.lost_time_range.start.date:
+        if query.lost_time_range.start.date == item.found_time.date:
+            time_match = 0.75
+            reasons.append("Found date matches the selected time range.")
 
-    location_match = 0.35
-    if query.lost_location and query.lost_location.lower() in item.found_location.lower():
-        location_match = 0.94
-        reasons.append("Found location matches the reported area.")
+    location_match = 0.3
+    query_location = query.lost_location or "any"
+    if query_location != "any" and item.found_location:
+        keywords = option_keywords(query_location, LOCATION_OPTIONS)
+        if query_location == item.found_location or any(word in item.found_location for word in keywords):
+            location_match = 0.85
+            reasons.append("Found location is consistent with the selected area.")
 
-    overall_match = min(0.99, visual_score * 0.6 + time_match * 0.15 + location_match * 0.15 + special_bonus)
+    overall_match = min(
+        0.99,
+        visual_score * 0.65 + time_match * 0.15 + location_match * 0.15 + special_bonus + component_bonus,
+    )
+
     mismatch_notes: list[str] = []
     if query.item_type_hint and query.item_type_hint != item.category:
-        mismatch_notes.append(f"Confirmed item type points to {query.item_type_hint.lower()}, not {item.category.lower()}.")
+        mismatch_notes.append("Item type differs from the confirmed hint.")
     if query.color_hint and query.color_hint != item.color:
-        mismatch_notes.append(f"Confirmed color differs from the {item.color.lower()} item shown here.")
-    if query.lost_location and query.lost_location.lower() not in item.found_location.lower():
-        mismatch_notes.append("Found location does not fully match the reported area.")
+        mismatch_notes.append("Color differs from the confirmed hint.")
 
     return MatchResult(
         item_id=item.item_id,
-        title=item.title,
-        image_path="",
+        image_path=item.image_path,
         found_time=item.found_time,
         found_location=item.found_location,
-        visual_similarity=round(min(0.99, visual_score + special_bonus), 2),
+        visual_similarity=round(min(0.99, visual_score + special_bonus + component_bonus), 2),
         time_match=round(time_match, 2),
         location_match=round(location_match, 2),
         overall_match=round(overall_match, 2),
@@ -138,20 +149,6 @@ def _build_result(query: SearchQuery, item: _DemoItem) -> MatchResult:
         reasons=reasons,
         mismatch_notes=mismatch_notes,
     )
-
-
-def _notes_overlap(note: str, item_notes: list[str]) -> bool:
-    lowered = note.lower()
-    return any(token in lowered for token in _tokenize_notes(item_notes))
-
-
-def _tokenize_notes(item_notes: list[str]) -> set[str]:
-    tokens: set[str] = set()
-    for note in item_notes:
-        for part in note.lower().replace("-", " ").split():
-            if len(part) > 2:
-                tokens.add(part)
-    return tokens
 
 
 def _confidence_label(score: float) -> str:

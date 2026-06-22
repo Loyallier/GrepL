@@ -47,6 +47,42 @@ ITEM_LABELS = {
         "keywords": ["bag", "backpack", "handbag", "tote", "包", "书包", "背包", "手提包"],
         "prompts": ["a photo of a bag", "a photo of a backpack", "a photo of a handbag"],
     },
+    "Phone": {
+        "keywords": ["phone", "smartphone", "iphone", "android", "手机", "电话"],
+        "prompts": ["a photo of a phone", "a photo of a smartphone"],
+    },
+    "Laptop": {
+        "keywords": ["laptop", "notebook computer", "macbook", "笔记本电脑", "电脑", "笔记本"],
+        "prompts": ["a photo of a laptop", "a photo of a notebook computer"],
+    },
+    "Charger": {
+        "keywords": ["charger", "charging cable", "adapter", "充电器", "充电线", "数据线", "插头", "转换头"],
+        "prompts": ["a photo of a charger", "a photo of a charging cable", "a photo of a power adapter"],
+    },
+    "Power Bank": {
+        "keywords": ["power bank", "portable charger", "充电宝"],
+        "prompts": ["a photo of a power bank", "a photo of a portable charger"],
+    },
+    "USB Drive": {
+        "keywords": ["usb", "usb drive", "flash drive", "thumb drive", "u盘", "优盘"],
+        "prompts": ["a photo of a usb drive", "a photo of a flash drive"],
+    },
+    "Notebook": {
+        "keywords": ["notebook", "notepad", "journal", "exercise book", "笔记本", "本子", "记事本"],
+        "prompts": ["a photo of a notebook", "a photo of a notepad"],
+    },
+    "Pen": {
+        "keywords": ["pen", "pencil", "marker", "ballpoint", "钢笔", "圆珠笔", "笔", "铅笔", "记号笔"],
+        "prompts": ["a photo of a pen", "a photo of a pencil"],
+    },
+    "Glasses": {
+        "keywords": ["glasses", "spectacles", "eyeglasses", "眼镜"],
+        "prompts": ["a photo of eyeglasses", "a photo of glasses"],
+    },
+    "Watch": {
+        "keywords": ["watch", "smart watch", "apple watch", "手表", "智能手表"],
+        "prompts": ["a photo of a watch", "a photo of a smartwatch"],
+    },
 }
 
 COLOR_LABELS = {
@@ -60,6 +96,17 @@ COLOR_LABELS = {
     "Yellow": ["yellow", "mustard", "黄色"],
     "Silver": ["silver", "gray", "grey", "银色", "灰色"],
     "Brown": ["brown", "tan", "棕色", "褐色"],
+}
+
+PART_LABELS = {
+    "lid": ["lid", "cap", "cover", "top", "杯盖", "盖子", "盖"],
+    "case": ["case", "shell", "cover", "外壳", "壳", "保护壳", "保护套", "套子"],
+    "strap": ["strap", "lanyard", "string", "belt", "肩带", "背带", "挂绳", "绳子"],
+    "handle": ["handle", "grip", "把手", "提手"],
+    "button": ["button", "key", "按键", "按钮"],
+    "screen": ["screen", "display", "屏幕", "屏"],
+    "left": ["left", "left earbud", "左耳", "左耳机", "左边"],
+    "right": ["right", "right earbud", "右耳", "右耳机", "右边"],
 }
 
 LOCATION_KEYWORDS = {
@@ -123,6 +170,11 @@ FUZZY_WORDS = [
 PUNCTUATION_SPLIT_RE = re.compile(r"[,.!?;，。！？；\n]+")
 SPACE_RE = re.compile(r"\s+")
 
+_COLOR_KEYWORD_TO_LABEL: dict[str, str] = {}
+for _label, _keywords in COLOR_LABELS.items():
+    for _keyword in _keywords:
+        _COLOR_KEYWORD_TO_LABEL[_keyword.lower()] = _label
+
 
 @dataclass
 class QueryAnalysis:
@@ -130,11 +182,13 @@ class QueryAnalysis:
 
     raw_query: str
     normalized_query: str
+    reconstructed_query: str
     item_type: str | None = None
     color: str | None = None
     time_hint: str | None = None
     location_hint: str | None = None
     special_notes: list[str] = field(default_factory=list)
+    component_colors: dict[str, str] = field(default_factory=dict)
     needs_confirmation: bool = False
     follow_up_question: str | None = None
     follow_up_options: list[str] = field(default_factory=list)
@@ -153,18 +207,27 @@ class _Prediction:
 def analyze_query(
     query: str,
     *,
-    lost_time: str | None = None,
     lost_location: str | None = None,
+    lost_time_hint: str | None = None,
 ) -> QueryAnalysis:
     """Extract stable query hints without rewriting the user's original sentence."""
 
     normalized = _normalize_text(query)
     item_prediction = _predict_item_type(normalized)
     color_prediction = _predict_color(normalized)
-    time_hint = _clean_optional(lost_time) or _extract_time_hint(normalized)
+    time_hint = _clean_optional(lost_time_hint) or _extract_time_hint(normalized)
     location_hint = _clean_optional(lost_location) or _extract_location_hint(normalized)
     special_notes = _extract_special_notes(normalized)
+    component_colors = _extract_component_colors(normalized, default_color=color_prediction.label)
     fuzzy_detected = _contains_fuzzy_language(normalized)
+    reconstructed_query = build_reconstructed_query(
+        item_type=item_prediction.label,
+        color=color_prediction.label,
+        component_colors=component_colors,
+        special_notes=special_notes,
+        location_hint=location_hint,
+        time_hint=time_hint,
+    )
 
     needs_confirmation = False
     follow_up_question: str | None = None
@@ -198,17 +261,51 @@ def analyze_query(
     return QueryAnalysis(
         raw_query=query,
         normalized_query=normalized,
+        reconstructed_query=reconstructed_query,
         item_type=item_prediction.label,
         color=color_prediction.label,
         time_hint=time_hint,
         location_hint=location_hint,
         special_notes=special_notes,
+        component_colors=component_colors,
         needs_confirmation=needs_confirmation,
         follow_up_question=follow_up_question,
         follow_up_options=follow_up_options,
         follow_up_target=follow_up_target,
         confidence_summary=confidence_summary,
     )
+
+
+def build_reconstructed_query(
+    *,
+    item_type: str | None,
+    color: str | None,
+    component_colors: dict[str, str],
+    special_notes: list[str],
+    location_hint: str | None,
+    time_hint: str | None,
+) -> str:
+    """Reconstruct a stable, compact query string from extracted labels and hints."""
+
+    parts: list[str] = []
+    if color:
+        parts.append(color.lower())
+    if item_type:
+        parts.append(item_type.lower())
+    for part, part_color in component_colors.items():
+        if part_color:
+            parts.append(f"{part_color.lower()} {part}".strip())
+        else:
+            parts.append(part)
+    for note in special_notes:
+        cleaned = note.strip()
+        if cleaned:
+            parts.append(cleaned)
+    if location_hint and location_hint != "any":
+        parts.append(f"near {location_hint.lower()}")
+    if time_hint:
+        parts.append(time_hint.lower())
+    return " ".join(_dedupe_options(parts))
 
 
 def _predict_item_type(text: str) -> _Prediction:
@@ -326,6 +423,34 @@ def _extract_location_hint(text: str) -> str | None:
         for keyword in keywords:
             if keyword.lower() in lowered:
                 return label
+    return None
+
+
+def _extract_component_colors(text: str, *, default_color: str | None) -> dict[str, str]:
+    lowered = text.lower()
+    component_colors: dict[str, str] = {}
+    for part, keywords in PART_LABELS.items():
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            start = 0
+            while True:
+                idx = lowered.find(keyword_lower, start)
+                if idx == -1:
+                    break
+                window_left = max(0, idx - 10)
+                window_right = min(len(lowered), idx + len(keyword_lower) + 10)
+                window = lowered[window_left:window_right]
+                color_label = _find_color_label(window) or default_color
+                if color_label:
+                    component_colors[part] = color_label
+                start = idx + len(keyword_lower)
+    return component_colors
+
+
+def _find_color_label(text_window: str) -> str | None:
+    for keyword, label in _COLOR_KEYWORD_TO_LABEL.items():
+        if keyword in text_window:
+            return label
     return None
 
 

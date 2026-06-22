@@ -26,12 +26,14 @@ class SearchQuery:
     """User search input collected from the browser interface."""
 
     description: str
+    search_text: str | None = None
     lost_time_range: TimeRange | None = None
     lost_location: str | None = None
     result_limit: int = 20
     item_type_hint: str | None = None
     color_hint: str | None = None
     special_notes: list[str] = field(default_factory=list)
+    component_color_hints: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

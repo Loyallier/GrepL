@@ -32,6 +32,10 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
     normalized_query = SearchQuery(
         description=query.description.strip(),
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+        search_text=_clean_optional(query.search_text),
+>>>>>>> c300916 (feat: add reconstructed query generation with expanded labels and part-color binding)
         lost_time_range=query.lost_time_range,
         lost_location=_clean_option(query.lost_location, LOCATION_OPTIONS),
         result_limit=_clean_result_limit(query.result_limit),
@@ -43,6 +47,7 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
         item_type_hint=_clean_optional(query.item_type_hint),
         color_hint=_clean_optional(query.color_hint),
         special_notes=[note.strip() for note in query.special_notes if note.strip()],
+        component_color_hints={key.strip(): value.strip() for key, value in (query.component_color_hints or {}).items() if key.strip() and value.strip()},
     )
 
     registered_items = _load_registered_items()
@@ -94,6 +99,7 @@ def _clean_option(value: str | None, options: dict[str, SelectOption]) -> str:
     return cleaned if cleaned in options else "any"
 
 
+<<<<<<< HEAD
 def _clean_result_limit(value: int | str | None) -> int:
     try:
         return max(1, min(int(value), MAX_RESULT_LIMIT))
@@ -101,11 +107,14 @@ def _clean_result_limit(value: int | str | None) -> int:
         return DEFAULT_RESULT_LIMIT
 
 
+=======
+>>>>>>> c300916 (feat: add reconstructed query generation with expanded labels and part-color binding)
 def _clean_optional(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = value.strip()
     return cleaned or None
+<<<<<<< HEAD
 
 
 def _optional_module(module_name: str):
@@ -117,3 +126,5 @@ def _optional_module(module_name: str):
         raise
 
 
+=======
+>>>>>>> c300916 (feat: add reconstructed query generation with expanded labels and part-color binding)
