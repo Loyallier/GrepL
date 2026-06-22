@@ -8,10 +8,15 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from mock_data import DEMO_ASSET_DIR
 from config.options import LOCATION_OPTIONS, date_options, hour_options, option_label, select_labels
 from contracts import MatchResult, SearchQuery, TimePoint, TimeRange
+from query_understanding import analyze_query
 from search_service import search_items
+
+try:
+    from mock_data import DEMO_ASSET_DIR  # type: ignore
+except ModuleNotFoundError:
+    from demo_data import DEMO_ASSET_DIR
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -136,8 +141,14 @@ def _register_pages() -> None:
             results_container.clear()
 
             try:
+                location_value = lost_location.value or "any"
+                analysis = analyze_query(
+                    query_text,
+                    lost_location=None if location_value in {"any", "not_sure"} else location_value,
+                )
                 query = SearchQuery(
                     description=query_text,
+                    search_text=analysis.reconstructed_query,
                     lost_time_range=_build_time_range(
                         start_date.value,
                         start_hour.value,
@@ -146,6 +157,10 @@ def _register_pages() -> None:
                     ),
                     lost_location=lost_location.value or "any",
                     result_limit=int(result_limit.value or 5),
+                    item_type_hint=analysis.item_type,
+                    color_hint=analysis.color,
+                    special_notes=analysis.special_notes,
+                    component_color_hints=analysis.component_colors,
                 )
                 results = await asyncio.to_thread(search_items, query)
                 results_container.clear()
