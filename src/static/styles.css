@@ -215,18 +215,10 @@ body {
 }
 
 .primary-action,
-<<<<<<< HEAD
 .secondary-action {
   height: 48px;
   border-radius: 999px;
   font-weight: 800;
-=======
-.secondary-action,
-.tertiary-action {
-  height: 44px;
-  border-radius: 8px;
-  font-weight: 700;
->>>>>>> 29f2e28 (feat: add guided query analysis and confirmation flow for user-side search)
 }
 
 .primary-action {
@@ -242,7 +234,6 @@ body {
 }
 
 .secondary-action {
-<<<<<<< HEAD
   min-width: 48px;
   color: var(--muted);
 }
@@ -250,20 +241,6 @@ body {
 .secondary-action:hover {
   color: var(--ink);
   background: #f1f5f9;
-=======
-  min-width: 116px;
-  color: var(--blue-dark);
->>>>>>> 29f2e28 (feat: add guided query analysis and confirmation flow for user-side search)
-}
-
-.tertiary-action {
-  min-width: 104px;
-  color: var(--muted);
-}
-
-.tertiary-action {
-  min-width: 104px;
-  color: var(--muted);
 }
 
 .loading-row {
@@ -286,31 +263,6 @@ body {
   background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 12px 36px rgba(31, 41, 51, 0.07);
   backdrop-filter: blur(10px);
-}
-
-.analysis-card {
-  width: 100%;
-  margin-top: 6px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: none;
-  background: #f8fbff;
-}
-
-.analysis-title {
-  font-size: 16px;
-  font-weight: 800;
-}
-
-.analysis-note {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.analysis-grid {
-  width: 100%;
-  gap: 12px;
 }
 
 .results-header {
@@ -680,10 +632,6 @@ body {
 
   .result-main {
     flex-direction: column;
-  }
-
-  .analysis-grid {
-    grid-template-columns: 1fr !important;
   }
 
   .item-image {
