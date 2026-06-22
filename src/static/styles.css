@@ -261,6 +261,11 @@ body {
   color: var(--muted);
 }
 
+.tertiary-action {
+  min-width: 104px;
+  color: var(--muted);
+}
+
 .loading-row {
   align-items: center;
   gap: 10px;
