@@ -32,12 +32,14 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
         return []
     normalized_query = SearchQuery(
         description=query.description.strip(),
+        search_text=_clean_optional(query.search_text),
         lost_time_range=query.lost_time_range,
         lost_location=_clean_option(query.lost_location, LOCATION_OPTIONS),
         result_limit=max(1, min(int(query.result_limit), 10)),
         item_type_hint=_clean_optional(query.item_type_hint),
         color_hint=_clean_optional(query.color_hint),
         special_notes=[note.strip() for note in query.special_notes if note.strip()],
+        component_color_hints={key.strip(): value.strip() for key, value in (query.component_color_hints or {}).items() if key.strip() and value.strip()},
     )
     return mock_search_items(normalized_query)
 
@@ -47,3 +49,10 @@ def _clean_option(value: str | None, options: dict[str, SelectOption]) -> str:
         return "any"
     cleaned = value.strip()
     return cleaned if cleaned in options else "any"
+
+
+def _clean_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
