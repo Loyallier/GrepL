@@ -50,6 +50,16 @@
     如果提示 NiceGUI 未安装，请先执行：
         pip install -r requirements.txt
 
+后端 register 中控启动说明
+    开始进行原图和相关数据处理
+
+    正常执行完整登记流程：
+        python scripts/run_registration.py
+
+    暂时跳过图片向量化：
+        python scripts/run_registration.py --skip-embedding
+
+
 数据库说明
     data 文件夹作为当前项目的数据库，负责保存原始图片信息、裁剪后的物品图片、
     可搜索物品记录，以及图像向量化相关文件和索引信息。
