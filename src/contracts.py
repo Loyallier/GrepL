@@ -37,6 +37,20 @@ class SearchQuery:
 
 
 @dataclass
+class FollowUpQuestion:
+    target: str
+    question: str
+    options: list[str] = field(default_factory=list)
+    multi_select: bool = False
+
+
+@dataclass
+class SearchResponse:
+    results: list[MatchResult] = field(default_factory=list)
+    follow_up: FollowUpQuestion | None = None
+
+
+@dataclass
 class LostItem:
     """A found item stored by the lost-and-found system."""
 

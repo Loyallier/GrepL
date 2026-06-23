@@ -9,8 +9,7 @@ from pathlib import Path
 from nicegui import app, ui
 
 from config.options import LOCATION_OPTIONS, date_options, hour_options, option_label, select_labels
-from contracts import MatchResult, SearchQuery, TimePoint, TimeRange
-from query_understanding import analyze_query
+from contracts import FollowUpQuestion, MatchResult, SearchQuery, SearchResponse, TimePoint, TimeRange
 from search_service import search_items
 
 try:
@@ -134,6 +133,29 @@ def _register_pages() -> None:
                 description.props("error error-message='Description is required'")
                 return
 
+            async def prompt_follow_up(follow_up: FollowUpQuestion) -> str | list[str] | None:
+                selection: str | list[str] | None = None
+                waiter = asyncio.Event()
+
+                with ui.dialog() as dialog, ui.card():
+                    ui.label(follow_up.question).classes("text-subtitle1")
+                    if follow_up.multi_select:
+                        control = ui.select(follow_up.options, multiple=True).classes("w-full")
+                    else:
+                        control = ui.radio(follow_up.options).props("inline")
+
+                    def confirm() -> None:
+                        nonlocal selection
+                        selection = control.value
+                        dialog.close()
+                        waiter.set()
+
+                    ui.button("Confirm", on_click=confirm).props("color=primary")
+
+                dialog.open()
+                await waiter.wait()
+                return selection
+
             description.props(remove="error error-message")
             search_button.disable()
             loading_row.set_visibility(True)
@@ -141,14 +163,8 @@ def _register_pages() -> None:
             results_container.clear()
 
             try:
-                location_value = lost_location.value or "any"
-                analysis = analyze_query(
-                    query_text,
-                    lost_location=None if location_value in {"any", "not_sure"} else location_value,
-                )
                 query = SearchQuery(
                     description=query_text,
-                    search_text=analysis.reconstructed_query,
                     lost_time_range=_build_time_range(
                         start_date.value,
                         start_hour.value,
@@ -157,13 +173,37 @@ def _register_pages() -> None:
                     ),
                     lost_location=lost_location.value or "any",
                     result_limit=int(result_limit.value or 5),
-                    item_type_hint=analysis.item_type,
-                    color_hint=analysis.color,
-                    special_notes=analysis.special_notes,
-                    component_color_hints=analysis.component_colors,
                 )
-                results = await asyncio.to_thread(search_items, query)
+                response = await asyncio.to_thread(search_items, query)
+                if response.follow_up is not None:
+                    answer = await prompt_follow_up(response.follow_up)
+                    if answer is None:
+                        results_container.clear()
+                        status_label.text = "Search cancelled."
+                        _render_empty_state(results_container, "Cancelled", "Please confirm the missing details and search again.")
+                        return
+
+                    follow_up_query = SearchQuery(
+                        description=query.description,
+                        search_text=query.search_text,
+                        lost_time_range=query.lost_time_range,
+                        lost_location=query.lost_location,
+                        result_limit=query.result_limit,
+                        item_type_hint=query.item_type_hint,
+                        color_hint=query.color_hint,
+                        special_notes=list(query.special_notes),
+                        component_color_hints=dict(query.component_color_hints),
+                    )
+                    if response.follow_up.target == "item_type_hint" and isinstance(answer, str):
+                        follow_up_query.item_type_hint = answer
+                    elif response.follow_up.target == "special_notes" and isinstance(answer, str):
+                        if answer.lower().startswith("no"):
+                            follow_up_query.special_notes = ["__IGNORE__"]
+
+                    response = await asyncio.to_thread(search_items, follow_up_query)
+
                 results_container.clear()
+                results = response.results
                 if results:
                     status_label.text = f"Showing {len(results)} possible match{'es' if len(results) != 1 else ''}."
                     _render_results(results_container, results)

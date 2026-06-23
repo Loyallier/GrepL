@@ -6,7 +6,7 @@ import importlib
 from typing import Callable, Iterable
 
 from config.options import LOCATION_OPTIONS, SelectOption
-from contracts import Candidate, LostItem, MatchResult, SearchQuery
+from contracts import Candidate, FollowUpQuestion, LostItem, SearchQuery, SearchResponse
 from ranker import evaluate_matches
 
 
@@ -14,13 +14,21 @@ DEFAULT_RESULT_LIMIT = 5
 MAX_RESULT_LIMIT = 10
 
 EmbeddingMatcher = Callable[[str, Iterable[LostItem]], Iterable[Candidate]]
+_SPECIAL_NOTES_IGNORE_SENTINEL = "__IGNORE__"
 
 
-def search_items(query: SearchQuery) -> list[MatchResult]:
+try:
+    from query_understanding import analyze_query, build_reconstructed_query
+except ModuleNotFoundError:
+    analyze_query = None
+    build_reconstructed_query = None
+
+
+def search_items(query: SearchQuery) -> SearchResponse:
     """Search registered found items and return ranked candidate matches."""
 
     if not query.description.strip() and not (query.search_text or "").strip():
-        return [] 
+        return SearchResponse(results=[])
 
     normalized_query = SearchQuery(
         description=query.description.strip(),
@@ -38,17 +46,86 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
         },
     )
 
+    resolved = _resolve_query_understanding(normalized_query)
+    if resolved.follow_up is not None:
+        return SearchResponse(results=[], follow_up=resolved.follow_up)
+
     registered_items = _load_registered_items()
     if not registered_items:
-        return []
+        return SearchResponse(results=[])
 
     matcher = _load_embedding_matcher() 
     if matcher is None:
-        return []
+        return SearchResponse(results=[])
 
-    search_text = normalized_query.search_text or normalized_query.description
+    search_text = resolved.search_text
     candidates = _match_text_to_images(matcher, search_text, registered_items)
-    return evaluate_matches(candidates, normalized_query)
+    results = evaluate_matches(candidates, resolved.query_for_ranking)
+    return SearchResponse(results=results)
+
+
+class _ResolvedQuery:
+    def __init__(self, *, query_for_ranking: SearchQuery, search_text: str, follow_up: FollowUpQuestion | None):
+        self.query_for_ranking = query_for_ranking
+        self.search_text = search_text
+        self.follow_up = follow_up
+
+
+def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
+    if analyze_query is None or build_reconstructed_query is None:
+        search_text = query.search_text or query.description
+        return _ResolvedQuery(query_for_ranking=query, search_text=search_text, follow_up=None)
+
+    lost_location_hint = None if query.lost_location in {"any", "not_sure", None} else query.lost_location
+    analysis = analyze_query(query.description, lost_location=lost_location_hint)
+
+    if analysis.needs_confirmation and analysis.follow_up_question and analysis.follow_up_target == "item_type":
+        if query.item_type_hint is None:
+            return _ResolvedQuery(
+                query_for_ranking=query,
+                search_text=query.search_text or query.description,
+                follow_up=FollowUpQuestion(
+                    target="item_type_hint",
+                    question=analysis.follow_up_question,
+                    options=analysis.follow_up_options,
+                    multi_select=False,
+                ),
+            )
+
+    item_type = query.item_type_hint or analysis.item_type
+    color = query.color_hint or analysis.color
+
+    special_notes = query.special_notes
+    ignore_special_notes = _SPECIAL_NOTES_IGNORE_SENTINEL in special_notes
+    if ignore_special_notes:
+        special_notes = []
+    elif not special_notes:
+        special_notes = analysis.special_notes
+
+    component_colors = query.component_color_hints or analysis.component_colors
+
+    reconstructed_query = build_reconstructed_query(
+        item_type=item_type,
+        color=color,
+        component_colors=component_colors,
+        special_notes=special_notes,
+        location_hint=analysis.location_hint or query.lost_location,
+        time_hint=analysis.time_hint,
+    )
+    search_text = reconstructed_query.strip() or query.search_text or query.description
+
+    query_for_ranking = SearchQuery(
+        description=query.description,
+        search_text=search_text,
+        lost_time_range=query.lost_time_range,
+        lost_location=query.lost_location,
+        result_limit=query.result_limit,
+        item_type_hint=item_type,
+        color_hint=color,
+        special_notes=special_notes,
+        component_color_hints=component_colors,
+    )
+    return _ResolvedQuery(query_for_ranking=query_for_ranking, search_text=search_text, follow_up=None)
 
 
 def _load_registered_items() -> list[LostItem]:
