@@ -231,7 +231,13 @@ data/generated/*
 data/temp/
 screenshots/
 test-output/
-models/
+detector_debug*.jpg
+testimage/
+models/*
+!models/ssd_mobilenet_v2_coco_2018_03_29/
+models/ssd_mobilenet_v2_coco_2018_03_29/*
+!models/ssd_mobilenet_v2_coco_2018_03_29/frozen_inference_graph.pb
+!models/ssd_mobilenet_v2_coco_2018_03_29/graph.pbtxt
 .cache/
 data/weights/
 *.h5
