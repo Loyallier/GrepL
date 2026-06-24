@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from pathlib import Path
 
 from nicegui import app, ui
 
-from mock_data import DEMO_ASSET_DIR
 from config.options import LOCATION_OPTIONS, date_options, hour_options, option_label, select_labels
 from contracts import MatchResult, SearchQuery, TimePoint, TimeRange
 from search_service import search_items
@@ -17,13 +17,15 @@ from search_service import search_items
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = PROJECT_ROOT / "src" / "static"
 PLACEHOLDER_COLORS = ("#dce9f6", "#f1f5f9")
+ITEM_IMAGE_DIR = PROJECT_ROOT / "data" / "cropped_item_image"
+LOGGER = logging.getLogger(__name__)
 
 
 def run_app() -> None:
     """Configure and start the browser GUI."""
 
     app.add_static_files("/static", str(STATIC_DIR))
-    app.add_static_files("/demo-assets", str(DEMO_ASSET_DIR))
+    app.add_static_files("/item-images", str(ITEM_IMAGE_DIR))
     _register_pages()
     ui.run(
         title="GrepL Lost & Found",
@@ -151,6 +153,7 @@ def _register_pages() -> None:
                     status_label.text = "No matches found."
                     _render_empty_state(results_container, "No candidates yet", "Try adding a color, visual feature, or location.")
             except Exception:
+                LOGGER.exception("Search failed while rendering results.")
                 status_label.text = "Search failed."
                 results_container.clear()
                 _render_error_state(results_container)
@@ -209,7 +212,7 @@ def _render_result_card(index: int, result: MatchResult) -> None:
                     _reason_list("Why This May Not Match", result.mismatch_notes, "info")
 
 
-def _score_pill(label: str, value: float) -> None:
+def _score_pill(label: str, value: float | None) -> None:
     with ui.element("div").classes("score-pill"):
         ui.label(label).classes("score-label")
         ui.label(_percent(value)).classes("score-value")
@@ -272,10 +275,10 @@ def _image_url(image_path: str) -> str | None:
     if not path.is_file():
         return None
     try:
-        relative_path = path.relative_to(DEMO_ASSET_DIR).as_posix()
+        relative_path = path.relative_to(ITEM_IMAGE_DIR).as_posix()
     except ValueError:
         return None
-    return f"/demo-assets/{relative_path}"
+    return f"/item-images/{relative_path}"
 
 
 def _found_summary(result: MatchResult) -> str:
@@ -296,7 +299,9 @@ def _format_time_point(time_point: TimePoint | None) -> str:
     return "Time unknown"
 
 
-def _percent(value: float) -> str:
+def _percent(value: float | None) -> str:
+    if value is None:
+        return "N/A"
     return f"{round(value * 100):d}%"
 
 
