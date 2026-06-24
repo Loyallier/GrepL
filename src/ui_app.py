@@ -186,6 +186,7 @@ def _register_pages() -> None:
                     follow_up_query = SearchQuery(
                         description=query.description,
                         search_text=query.search_text,
+                        use_original_query=query.use_original_query,
                         lost_time_range=query.lost_time_range,
                         lost_location=query.lost_location,
                         result_limit=query.result_limit,
@@ -195,7 +196,15 @@ def _register_pages() -> None:
                         component_color_hints=dict(query.component_color_hints),
                     )
                     if response.follow_up.target == "item_type_hint" and isinstance(answer, str):
-                        follow_up_query.item_type_hint = answer
+                        if answer == "None of the above":
+                            follow_up_query.use_original_query = True
+                            follow_up_query.item_type_hint = None
+                            follow_up_query.color_hint = None
+                            follow_up_query.special_notes = []
+                            follow_up_query.component_color_hints = {}
+                            follow_up_query.search_text = None
+                        else:
+                            follow_up_query.item_type_hint = answer
                     elif response.follow_up.target == "special_notes" and isinstance(answer, str):
                         if answer.lower().startswith("no"):
                             follow_up_query.special_notes = ["__IGNORE__"]

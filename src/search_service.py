@@ -15,6 +15,7 @@ MAX_RESULT_LIMIT = 10
 
 EmbeddingMatcher = Callable[[str, Iterable[LostItem]], Iterable[Candidate]]
 _SPECIAL_NOTES_IGNORE_SENTINEL = "__IGNORE__"
+_NONE_OF_ABOVE_OPTION = "None of the above"
 
 
 try:
@@ -33,6 +34,7 @@ def search_items(query: SearchQuery) -> SearchResponse:
     normalized_query = SearchQuery(
         description=query.description.strip(),
         search_text=_clean_optional(query.search_text),
+        use_original_query=bool(getattr(query, "use_original_query", False)),
         lost_time_range=query.lost_time_range,
         lost_location=_clean_option(query.lost_location, LOCATION_OPTIONS),
         result_limit=_clean_result_limit(query.result_limit),
@@ -72,6 +74,18 @@ class _ResolvedQuery:
 
 
 def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
+    if getattr(query, "use_original_query", False):
+        search_text = query.description.strip() or query.search_text or ""
+        query_for_ranking = SearchQuery(
+            description=query.description,
+            search_text=None,
+            use_original_query=True,
+            lost_time_range=query.lost_time_range,
+            lost_location=query.lost_location,
+            result_limit=query.result_limit,
+        )
+        return _ResolvedQuery(query_for_ranking=query_for_ranking, search_text=search_text, follow_up=None)
+
     if analyze_query is None or build_reconstructed_query is None:
         search_text = query.search_text or query.description
         return _ResolvedQuery(query_for_ranking=query, search_text=search_text, follow_up=None)
@@ -87,7 +101,20 @@ def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
                 follow_up=FollowUpQuestion(
                     target="item_type_hint",
                     question=analysis.follow_up_question,
-                    options=analysis.follow_up_options,
+                    options=_append_none_of_above(analysis.follow_up_options),
+                    multi_select=False,
+                ),
+            )
+
+    if analysis.needs_confirmation and analysis.follow_up_question and analysis.follow_up_target == "special_notes":
+        if not query.special_notes:
+            return _ResolvedQuery(
+                query_for_ranking=query,
+                search_text=query.search_text or query.description,
+                follow_up=FollowUpQuestion(
+                    target="special_notes",
+                    question=analysis.follow_up_question,
+                    options=list(analysis.follow_up_options),
                     multi_select=False,
                 ),
             )
@@ -117,6 +144,7 @@ def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
     query_for_ranking = SearchQuery(
         description=query.description,
         search_text=search_text,
+        use_original_query=False,
         lost_time_range=query.lost_time_range,
         lost_location=query.lost_location,
         result_limit=query.result_limit,
@@ -126,6 +154,17 @@ def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
         component_color_hints=component_colors,
     )
     return _ResolvedQuery(query_for_ranking=query_for_ranking, search_text=search_text, follow_up=None)
+
+
+def _append_none_of_above(options: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    for option in options:
+        candidate = option.strip()
+        if candidate and candidate not in cleaned:
+            cleaned.append(candidate)
+    if _NONE_OF_ABOVE_OPTION not in cleaned:
+        cleaned.append(_NONE_OF_ABOVE_OPTION)
+    return cleaned
 
 
 def _load_registered_items() -> list[LostItem]:

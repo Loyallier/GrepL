@@ -27,6 +27,7 @@ class SearchQuery:
 
     description: str
     search_text: str | None = None
+    use_original_query: bool = False
     lost_time_range: TimeRange | None = None
     lost_location: str | None = None
     result_limit: int = 20
