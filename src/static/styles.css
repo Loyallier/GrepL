@@ -270,15 +270,16 @@ body {
 }
 
 .process-panel {
-  width: min(100%, 820px);
+  width: min(100%, 1080px);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   padding-top: 2px;
 }
 
 .process-step {
   position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -291,10 +292,12 @@ body {
   font-size: 13px;
   font-weight: 600;
   opacity: 0.62;
-  transition: opacity 180ms ease, background 180ms ease, border-color 180ms ease;
+  transition: opacity 180ms ease, background 180ms ease, border-color 180ms ease, transform 180ms ease;
 }
 
 .process-dot {
+  position: relative;
+  flex: 0 0 auto;
   width: 7px;
   height: 7px;
   border-radius: 999px;
@@ -307,6 +310,12 @@ body {
   font-size: 18px;
 }
 
+.process-dot,
+.process-check,
+.process-label {
+  z-index: 1;
+}
+
 .process-step-active {
   color: var(--ink);
   border-color: var(--line);
@@ -314,8 +323,31 @@ body {
   opacity: 1;
 }
 
+.process-step-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(23, 25, 35, 0.045), transparent);
+  transform: translateX(-120%);
+  animation: process-sheen 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
 .process-step-active .process-dot {
+  border: 1px solid rgba(23, 25, 35, 0.38);
+  background: transparent;
+  animation: process-dot-hop 1.25s ease-in-out infinite;
+}
+
+.process-step-active .process-dot::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: inherit;
   background: var(--ink);
+  opacity: 0.82;
+  animation: process-dot-breathe 1.25s ease-in-out infinite;
 }
 
 .process-step-complete {
@@ -336,6 +368,49 @@ body {
   border-color: #f1c1ba;
   background: #fff5f4;
   opacity: 1;
+}
+
+@keyframes process-dot-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  42% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes process-dot-breathe {
+  0%,
+  100% {
+    opacity: 0.46;
+    transform: scale(0.76);
+  }
+
+  42% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes process-sheen {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  46%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .process-step-active::after,
+  .process-step-active .process-dot,
+  .process-step-active .process-dot::before {
+    animation: none;
+  }
 }
 
 .results-section {
