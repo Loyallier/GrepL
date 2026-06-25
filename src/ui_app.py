@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 from datetime import date
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,7 @@ def _register_pages() -> None:
     @ui.page("/")
     def index() -> None:
         ui.add_head_html('<link rel="stylesheet" href="/static/styles.css">')
+        ui.add_head_html(_detail_image_zoom_script())
 
         with ui.element("main").classes("app-shell") as app_shell:
             with ui.element("section").classes("search-section"):
@@ -362,31 +364,109 @@ def _render_result_card(index: int, result: MatchResult) -> None:
                 ):
                     ui.label(_percent(result.overall_match)).classes("score-ring-value")
 
-        with (
-            ui.expansion("Details")
-            .classes("details-expansion")
-            .props("dense expand-icon=keyboard_arrow_down")
-        ):
-            with ui.element("div").classes("details-panel"):
-                _metric_bar("Visual Similarity", result.visual_similarity)
-                _metric_bar("Time Match", result.time_match)
-                _metric_bar("Location Match", result.location_match)
-                _reason_list(
-                    "Why it matched", result.reasons, "check_circle", "reason-positive"
-                )
-                if result.mismatch_notes:
-                    _reason_list(
-                        "Why this may not match",
-                        result.mismatch_notes,
-                        "info",
-                        "reason-warning",
+        detail_dialog = _render_result_detail_dialog(index, result)
+        ui.button("Details", on_click=detail_dialog.open).classes("details-button").props(
+            "flat dense no-caps type=button"
+        )
+
+
+def _render_result_detail_dialog(index: int, result: MatchResult) -> ui.dialog:
+    with (
+        ui.dialog()
+        .classes("detail-dialog")
+        .props("transition-show=fade transition-hide=fade") as detail_dialog
+    ):
+        with ui.element("div").classes("detail-modal-card"):
+            with ui.element("div").classes("detail-image-pane"):
+                _render_zoomable_result_image(index, result)
+            with ui.element("div").classes("detail-info-pane"):
+                with ui.row().classes("detail-modal-topline"):
+                    with ui.element("div").classes("detail-title-block"):
+                        ui.label(f"Candidate #{index}").classes("detail-modal-title")
+                        ui.label(_format_location(result.found_location)).classes(
+                            "detail-modal-subtitle"
+                        )
+                    ui.button(icon="close", on_click=detail_dialog.close).classes(
+                        "detail-close-button"
+                    ).props("flat round type=button aria-label='Close details'")
+
+                with ui.element("div").classes("detail-confidence-card"):
+                    with ui.element("div").classes("detail-confidence-copy"):
+                        ui.label("Confidence").classes("detail-section-kicker")
+                        ui.label(_confidence_text(result.confidence_label)).classes(
+                            "detail-confidence-value"
+                        )
+                    ui.label(_percent(result.overall_match)).classes(
+                        "detail-overall-score"
                     )
 
+                with ui.element("div").classes("detail-meta-grid"):
+                    _metadata("schedule", _format_time_point(result.found_time))
+                    _metadata("place", _format_location(result.found_location))
 
-def _render_result_image(result: MatchResult) -> None:
+                with ui.element("div").classes("details-panel detail-modal-panel"):
+                    _metric_bar("Visual Similarity", result.visual_similarity)
+                    _metric_bar("Time Match", result.time_match)
+                    _metric_bar("Location Match", result.location_match)
+                    _reason_list(
+                        "Why it matched",
+                        result.reasons,
+                        "check_circle",
+                        "reason-positive",
+                    )
+                    if result.mismatch_notes:
+                        _reason_list(
+                            "Why this may not match",
+                            result.mismatch_notes,
+                            "info",
+                            "reason-warning",
+                        )
+    return detail_dialog
+
+
+def _render_zoomable_result_image(index: int, result: MatchResult) -> None:
+    viewport_id = f"detail-image-{index}-{_dom_id_part(result.item_id)}"
+    with ui.element("div").classes("detail-image-viewport").props(f'id="{viewport_id}"'):
+        image_url = _image_url(result.image_path)
+        if image_url:
+            ui.html(
+                '<img '
+                'class="detail-zoom-image" '
+                f'src="{escape(image_url, quote=True)}" '
+                'alt="Candidate item image" '
+                'draggable="false">'
+            )
+        else:
+            with ui.element("div").classes("image-fallback"):
+                ui.icon("image_not_supported").classes("fallback-icon")
+                ui.label("Image unavailable").classes("fallback-text")
+        with ui.row().classes("detail-zoom-controls"):
+            ui.button(icon="remove").classes("detail-zoom-button").props(
+                "flat round dense type=button aria-label='Zoom out'"
+            ).on(
+                "click",
+                lambda: ui.run_javascript(f"window.greplZoomImage('{viewport_id}', 0.85)"),
+            )
+            ui.button(icon="restart_alt").classes("detail-zoom-button").props(
+                "flat round dense type=button aria-label='Reset image zoom'"
+            ).on(
+                "click",
+                lambda: ui.run_javascript(f"window.greplResetImage('{viewport_id}')"),
+            )
+            ui.button(icon="add").classes("detail-zoom-button").props(
+                "flat round dense type=button aria-label='Zoom in'"
+            ).on(
+                "click",
+                lambda: ui.run_javascript(f"window.greplZoomImage('{viewport_id}', 1.18)"),
+            )
+
+
+def _render_result_image(
+    result: MatchResult, *, image_classes: str = "item-image"
+) -> None:
     image_url = _image_url(result.image_path)
     if image_url:
-        ui.image(image_url).classes("item-image")
+        ui.image(image_url).classes(image_classes)
     else:
         with ui.element("div").classes("image-fallback"):
             ui.icon("image_not_supported").classes("fallback-icon")
@@ -457,6 +537,77 @@ def _image_url(image_path: str) -> str | None:
     except ValueError:
         return None
     return f"/item-images/{relative_path}"
+
+
+def _dom_id_part(value: str) -> str:
+    cleaned = "".join(character if character.isalnum() else "-" for character in value)
+    return cleaned.strip("-") or "item"
+
+
+def _detail_image_zoom_script() -> str:
+    return """
+<script>
+(() => {
+  if (window.greplImageZoomReady) return;
+  window.greplImageZoomReady = true;
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  const apply = (viewport, scale, x, y) => {
+    const image = viewport.querySelector('.detail-zoom-image');
+    if (!image) return;
+    viewport.dataset.scale = String(scale);
+    viewport.dataset.x = String(x);
+    viewport.dataset.y = String(y);
+    image.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    viewport.classList.toggle('is-zoomed', scale > 1.01);
+  };
+
+  window.greplZoomImage = (id, factor) => {
+    const viewport = document.getElementById(id);
+    if (!viewport) return;
+    const scale = clamp((Number(viewport.dataset.scale) || 1) * factor, 0.5, 4);
+    apply(viewport, scale, Number(viewport.dataset.x) || 0, Number(viewport.dataset.y) || 0);
+  };
+
+  window.greplResetImage = (id) => {
+    const viewport = document.getElementById(id);
+    if (viewport) apply(viewport, 1, 0, 0);
+  };
+
+  document.addEventListener('wheel', (event) => {
+    const viewport = event.target.closest('.detail-image-viewport');
+    if (!viewport) return;
+    event.preventDefault();
+    window.greplZoomImage(viewport.id, event.deltaY < 0 ? 1.08 : 0.92);
+  }, { passive: false });
+
+  document.addEventListener('pointerdown', (event) => {
+    const viewport = event.target.closest('.detail-image-viewport');
+    if (!viewport || (Number(viewport.dataset.scale) || 1) <= 1.01) return;
+    viewport.dataset.dragging = 'true';
+    viewport.dataset.startX = String(event.clientX);
+    viewport.dataset.startY = String(event.clientY);
+    viewport.dataset.originX = viewport.dataset.x || '0';
+    viewport.dataset.originY = viewport.dataset.y || '0';
+    viewport.setPointerCapture?.(event.pointerId);
+  });
+
+  document.addEventListener('pointermove', (event) => {
+    const viewport = event.target.closest('.detail-image-viewport');
+    if (!viewport || viewport.dataset.dragging !== 'true') return;
+    const x = Number(viewport.dataset.originX) + event.clientX - Number(viewport.dataset.startX);
+    const y = Number(viewport.dataset.originY) + event.clientY - Number(viewport.dataset.startY);
+    apply(viewport, Number(viewport.dataset.scale) || 1, x, y);
+  });
+
+  document.addEventListener('pointerup', (event) => {
+    const viewport = event.target.closest('.detail-image-viewport');
+    if (viewport) viewport.dataset.dragging = 'false';
+  });
+})();
+</script>
+"""
 
 
 def _format_location(value: str | None) -> str:
