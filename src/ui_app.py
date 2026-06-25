@@ -17,6 +17,7 @@ from search_service import search_items
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = PROJECT_ROOT / "src" / "static"
 ITEM_IMAGE_DIR = PROJECT_ROOT / "data" / "cropped_item_image"
+PROCESS_STAGES = ("Understanding", "Matching", "Ranking", "Results")
 LOGGER = logging.getLogger(__name__)
 
 
@@ -43,30 +44,20 @@ def _register_pages() -> None:
         with ui.element("main").classes("app-shell"):
             with ui.element("section").classes("search-panel"):
                 with ui.row().classes("topbar"):
-                    with ui.element("div").classes("brand-lockup"):
-                        ui.label("GrepL").classes("brand")
-                        ui.label("AI-assisted lost item retrieval").classes("brand-subtitle")
-                    with ui.row().classes("signal-group"):
-                        _signal_chip("visual_search", "Visual matching")
-                        _signal_chip("inventory_2", "Live library")
+                    ui.label("GrepL").classes("brand")
 
-                with ui.element("div").classes("search-copy"):
+                with ui.element("div").classes("hero-section"):
                     ui.label("Campus Lost & Found").classes("page-title")
                     ui.label(
-                        "Describe the item you lost. GrepL compares your description with registered "
-                        "found-item images and ranks likely candidates."
+                        "Search registered found-item images with a short description and optional time or location context."
                     ).classes("intro-text")
 
                 with ui.element("div").classes("search-container"):
-                    with ui.row().classes("search-label-row"):
-                        ui.label("Search workspace").classes("eyebrow")
-                        ui.label("Filters stay hidden until you need them.").classes("microcopy")
-
                     with ui.row().classes("search-main-row"):
                         description = (
                             ui.input(
                                 label="Item description",
-                                placeholder="Example: blue bottle with stickers",
+                                placeholder="Describe the item you lost",
                             )
                             .classes("description-field search-control")
                             .props("borderless clearable")
@@ -81,8 +72,6 @@ def _register_pages() -> None:
 
                     with ui.element("div").classes("search-advanced-panel") as advanced_panel:
                         advanced_panel.set_visibility(False)
-                        ui.separator().classes("panel-divider")
-
                         with ui.element("div").classes("advanced-grid"):
                             with ui.element("div").classes("search-segment"):
                                 with ui.column().classes("time-range-group"):
@@ -125,20 +114,34 @@ def _register_pages() -> None:
                                 "flat no-caps"
                             )
 
-                with ui.row().classes("loading-row") as loading_row:
-                    ui.spinner("dots", size="md", color="primary")
-                    ui.label("Searching found items...").classes("loading-text")
-                loading_row.set_visibility(False)
+                with ui.element("div").classes("process-panel") as process_panel:
+                    with ui.row().classes("process-steps"):
+                        process_steps = []
+                        for stage in PROCESS_STAGES:
+                            with ui.element("div").classes("process-step") as process_step:
+                                ui.element("span").classes("process-dot")
+                                ui.label(stage).classes("process-label")
+                            process_steps.append(process_step)
+                    process_status = ui.label("").classes("process-status")
+                process_panel.set_visibility(False)
 
-            with ui.element("section").classes("results-panel"):
+            with ui.element("section").classes("results-panel") as results_panel:
                 with ui.row().classes("results-header"):
                     with ui.column().classes("header-copy"):
                         ui.label("Candidate Matches").classes("section-title")
-                        status_label = ui.label("Enter a description to begin.").classes("status-text")
-                    ui.icon("inventory_2").classes("header-icon")
-
+                        status_label = ui.label("").classes("status-text")
                 results_container = ui.column().classes("results-grid")
-                _render_empty_state(results_container)
+            results_panel.set_visibility(False)
+
+        def set_process_stage(index: int, message: str, state: str = "active") -> None:
+            process_panel.set_visibility(True)
+            process_status.text = message
+            for step_index, step in enumerate(process_steps):
+                step.classes(remove="process-step-active process-step-complete process-step-error")
+                if state == "done" or step_index < index:
+                    step.classes(add="process-step-complete")
+                elif step_index == index:
+                    step.classes(add="process-step-error" if state == "error" else "process-step-active")
 
         def toggle_advanced() -> None:
             is_visible = not advanced_panel.visible
@@ -186,9 +189,11 @@ def _register_pages() -> None:
 
             description.props(remove="error error-message")
             search_button.disable()
-            loading_row.set_visibility(True)
-            status_label.text = "Finding possible matches..."
+            results_panel.set_visibility(True)
             results_container.clear()
+            status_label.text = "Finding possible matches..."
+            set_process_stage(0, "Understanding request...")
+            await asyncio.sleep(0)
 
             try:
                 query = SearchQuery(
@@ -202,16 +207,18 @@ def _register_pages() -> None:
                     lost_location=lost_location.value or "any",
                     result_limit=int(result_limit.value or 5),
                 )
+                set_process_stage(1, "Matching description to registered images...")
                 response = await asyncio.to_thread(search_items, query)
                 if response.follow_up is not None:
+                    set_process_stage(0, "Waiting for one more detail...")
                     answer = await prompt_follow_up(response.follow_up)
                     if answer is None:
-                        results_container.clear()
                         status_label.text = "Search cancelled."
+                        set_process_stage(0, "Search cancelled.", "error")
                         _render_empty_state(
                             results_container,
                             "Cancelled",
-                            "Please confirm the missing details and search again.",
+                            "Confirm the missing detail and search again.",
                         )
                         return
 
@@ -241,28 +248,32 @@ def _register_pages() -> None:
                         if answer.lower().startswith("no"):
                             follow_up_query.special_notes = ["__IGNORE__"]
 
+                    set_process_stage(1, "Matching description to registered images...")
                     response = await asyncio.to_thread(search_items, follow_up_query)
 
+                set_process_stage(2, "Ranking candidates...")
                 results_container.clear()
                 results = response.results
                 if results:
                     match_text = "match" if len(results) == 1 else "matches"
                     status_label.text = f"Showing {len(results)} possible {match_text}."
+                    set_process_stage(3, "Results ready.", "done")
                     _render_results(results_container, results)
                 else:
                     status_label.text = "No matches found."
+                    set_process_stage(3, "No candidates found.", "done")
                     _render_empty_state(
                         results_container,
-                        "No candidates yet",
+                        "No candidates found",
                         "Try adding a color, visual feature, or location.",
                     )
             except Exception:
                 LOGGER.exception("Search failed while rendering results.")
                 status_label.text = "Search failed."
                 results_container.clear()
+                set_process_stage(2, "Search failed.", "error")
                 _render_error_state(results_container)
             finally:
-                loading_row.set_visibility(False)
                 search_button.enable()
 
         def handle_reset() -> None:
@@ -274,9 +285,10 @@ def _register_pages() -> None:
             end_hour.value = ""
             lost_location.value = "any"
             result_limit.value = 5
-            status_label.text = "Enter a description to begin."
+            status_label.text = ""
             results_container.clear()
-            _render_empty_state(results_container)
+            results_panel.set_visibility(False)
+            process_panel.set_visibility(False)
 
         search_button.on_click(handle_search)
         reset_button.on_click(handle_reset)
@@ -298,13 +310,12 @@ def _render_result_card(index: int, result: MatchResult) -> None:
                     ui.label(f"#{index}").classes("rank-badge")
                     ui.label(result.confidence_label).classes(_confidence_class(result.confidence_label))
                 ui.label(f"Candidate #{index}").classes("item-title")
-                ui.label("Review the image and match signals before claiming it.").classes("candidate-note")
                 ui.label(_found_summary(result)).classes("item-meta")
 
                 with ui.row().classes("score-row"):
-                    _score_pill("Overall Match", result.overall_match)
-                    _score_pill("Visual Similarity", result.visual_similarity)
-                    _score_pill("Place Match", result.location_match)
+                    _score_pill("Overall", result.overall_match)
+                    _score_pill("Visual", result.visual_similarity)
+                    _score_pill("Place", result.location_match)
 
                 with ui.row().classes("card-footer"):
                     ui.label(_compact_reason(result)).classes("compact-reason")
@@ -337,23 +348,27 @@ def _open_result_detail(index: int, result: MatchResult) -> None:
             _render_result_image(result, "detail-image")
 
             with ui.column().classes("detail-content"):
-                with ui.row().classes("result-topline"):
-                    ui.label(f"Rank #{index}").classes("rank-badge")
-                    ui.label(result.confidence_label).classes(_confidence_class(result.confidence_label))
-
+                _detail_section("Visual evidence")
                 with ui.element("div").classes("detail-score-grid"):
-                    _score_pill("Overall Match", result.overall_match)
                     _score_pill("Visual Similarity", result.visual_similarity)
+                    _score_pill("Overall Match", result.overall_match)
+
+                _detail_section("Context evidence")
+                with ui.element("div").classes("detail-score-grid"):
                     _score_pill("Time Match", result.time_match)
                     _score_pill("Place Match", result.location_match)
 
-                _reason_list("Why It May Match", result.reasons, "check_circle")
+                _reason_list("Match reasoning", result.reasons, "check_circle")
                 if result.mismatch_notes:
-                    _reason_list("Why This May Not Match", result.mismatch_notes, "info")
+                    _reason_list("Mismatch review", result.mismatch_notes, "info")
                 else:
                     ui.label("No mismatch notes were reported for this candidate.").classes("reason-line")
 
     dialog.open()
+
+
+def _detail_section(title: str) -> None:
+    ui.label(title).classes("detail-section-title")
 
 
 def _score_pill(label: str, value: float | None) -> None:
@@ -374,23 +389,13 @@ def _reason_list(title: str, items: list[str], icon_name: str) -> None:
             ui.label("No additional notes.").classes("reason-line")
 
 
-def _signal_chip(icon_name: str, label: str) -> None:
-    with ui.row().classes("signal-chip"):
-        ui.icon(icon_name).classes("signal-icon")
-        ui.label(label)
-
-
 def _compact_reason(result: MatchResult) -> str:
     if result.reasons:
         return result.reasons[0]
     return "Open details to review the match evidence."
 
 
-def _render_empty_state(
-    container: ui.column,
-    title: str = "Ready to search",
-    detail: str = "Results will appear here after you submit a lost item description.",
-) -> None:
+def _render_empty_state(container: ui.column, title: str, detail: str) -> None:
     with container:
         with ui.element("div").classes("empty-state"):
             ui.icon("manage_search").classes("empty-icon")
