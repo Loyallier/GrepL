@@ -50,55 +50,56 @@ def _register_pages() -> None:
         with ui.element("main").classes("app-shell") as app_shell:
             with ui.element("section").classes("search-section"):
                 ui.label("GrepL").classes("brand")
-                ui.label("Campus Lost & Found").classes("page-title")
-                ui.label("Describe what you lost. Add time or location only when it helps.").classes("intro-text")
+                with ui.element("div").classes("search-body"):
+                    ui.label("Campus Lost & Found").classes("page-title")
+                    ui.label("Describe what you lost. Add time or location only when it helps.").classes("intro-text")
 
-                with ui.element("div").classes("omnibox"):
-                    with ui.row().classes("omnibox-main"):
-                        description = (
-                            ui.input(placeholder="Describe the item you lost")
-                            .classes("description-input")
-                            .props("borderless clearable")
-                        )
-                        filters_button = ui.button(icon="tune").classes("icon-button").props(
-                            "flat round aria-label='Filters'"
-                        )
-                        reset_button = ui.button(icon="refresh").classes("icon-button reset-icon").props(
-                            "flat round aria-label='Reset'"
-                        )
-                        search_button = ui.button("Search", icon="search").classes("search-button").props(
-                            "unelevated no-caps"
-                        )
+                    with ui.element("div").classes("omnibox"):
+                        with ui.row().classes("omnibox-main"):
+                            description = (
+                                ui.input(placeholder="Describe the item you lost")
+                                .classes("description-input")
+                                .props("borderless clearable")
+                            )
+                            filters_button = ui.button(icon="tune").classes("icon-button").props(
+                                "flat round type=button aria-label='Filters'"
+                            )
+                            reset_button = ui.button(icon="refresh").classes("icon-button reset-icon").props(
+                                "flat round type=button aria-label='Reset'"
+                            )
+                            search_button = ui.button("Search", icon="search").classes("search-button").props(
+                                "unelevated no-caps type=button"
+                            )
 
-                    with ui.element("div").classes("filters-panel") as filters_panel:
-                        filters_panel.set_visibility(False)
-                        with ui.element("div").classes("filters-grid"):
-                            start_date = _date_input("Start date")
-                            end_date = _date_input("End date")
-                            lost_location = ui.select(
-                                options=select_labels(LOCATION_OPTIONS),
-                                label="Lost location",
-                                value="any",
-                            ).classes("filter-control").props("borderless")
-                            result_limit = ui.number(
-                                label="Number of results",
-                                value=5,
-                                min=1,
-                                max=10,
-                                step=1,
-                            ).classes("filter-control").props("borderless")
-                with ui.element("div").classes("clarification-banner") as clarification_banner:
-                    clarification_banner.set_visibility(False)
+                        with ui.element("div").classes("filters-panel") as filters_panel:
+                            filters_panel.set_visibility(False)
+                            with ui.element("div").classes("filters-grid"):
+                                start_date = _date_input("Start date")
+                                end_date = _date_input("End date")
+                                lost_location = ui.select(
+                                    options=select_labels(LOCATION_OPTIONS),
+                                    label="Lost location",
+                                    value="any",
+                                ).classes("filter-control").props("borderless")
+                                result_limit = ui.number(
+                                    label="Number of results",
+                                    value=5,
+                                    min=1,
+                                    max=10,
+                                    step=1,
+                                ).classes("filter-control").props("borderless")
+                    with ui.element("div").classes("clarification-banner") as clarification_banner:
+                        clarification_banner.set_visibility(False)
 
-                with ui.element("div").classes("process-panel") as process_panel:
-                    process_steps = []
-                    for label in PROCESS_STAGES:
-                        with ui.element("div").classes("process-step") as step:
-                            ui.icon("check").classes("process-check")
-                            ui.element("span").classes("process-dot")
-                            ui.label(label).classes("process-label")
-                        process_steps.append(step)
-                process_panel.set_visibility(False)
+                    with ui.element("div").classes("process-panel") as process_panel:
+                        process_steps = []
+                        for label in PROCESS_STAGES:
+                            with ui.element("div").classes("process-step") as step:
+                                ui.icon("check").classes("process-check")
+                                ui.element("span").classes("process-dot")
+                                ui.label(label).classes("process-label")
+                            process_steps.append(step)
+                    process_panel.set_visibility(False)
 
             with ui.element("section").classes("results-section") as results_section:
                 with ui.row().classes("results-header"):
@@ -238,9 +239,14 @@ def _register_pages() -> None:
             results_container.clear()
             clear_clarification()
             close_filters()
-            app_shell.classes(remove="app-shell-active")
             results_section.set_visibility(False)
             process_panel.set_visibility(False)
+            app_shell.classes(remove="app-shell-active")
+            description.update()
+            start_date.update()
+            end_date.update()
+            lost_location.update()
+            result_limit.update()
 
         filters_button.on_click(toggle_filters)
         search_button.on_click(handle_search)
