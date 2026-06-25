@@ -47,7 +47,7 @@ def _register_pages() -> None:
     def index() -> None:
         ui.add_head_html('<link rel="stylesheet" href="/static/styles.css">')
 
-        with ui.element("main").classes("app-shell"):
+        with ui.element("main").classes("app-shell") as app_shell:
             with ui.element("section").classes("search-section"):
                 ui.label("GrepL").classes("brand")
                 ui.label("Campus Lost & Found").classes("page-title")
@@ -62,6 +62,9 @@ def _register_pages() -> None:
                         )
                         filters_button = ui.button(icon="tune").classes("icon-button").props(
                             "flat round aria-label='Filters'"
+                        )
+                        reset_button = ui.button(icon="refresh").classes("icon-button reset-icon").props(
+                            "flat round aria-label='Reset'"
                         )
                         search_button = ui.button("Search", icon="search").classes("search-button").props(
                             "unelevated no-caps"
@@ -84,11 +87,6 @@ def _register_pages() -> None:
                                 max=10,
                                 step=1,
                             ).classes("filter-control").props("borderless")
-                        with ui.row().classes("filters-footer"):
-                            reset_button = ui.button("Reset", icon="refresh").classes("subtle-button").props(
-                                "flat no-caps"
-                            )
-
                 with ui.element("div").classes("clarification-banner") as clarification_banner:
                     clarification_banner.set_visibility(False)
 
@@ -116,6 +114,10 @@ def _register_pages() -> None:
                 filters_button.classes(add="icon-button-active")
             else:
                 filters_button.classes(remove="icon-button-active")
+
+        def close_filters() -> None:
+            filters_panel.set_visibility(False)
+            filters_button.classes(remove="icon-button-active")
 
         def set_process_stage(index: int, *, done: bool = False, error: bool = False) -> None:
             process_panel.set_visibility(True)
@@ -148,6 +150,8 @@ def _register_pages() -> None:
 
         async def run_search(query: SearchQuery) -> None:
             clear_clarification()
+            close_filters()
+            app_shell.classes(add="app-shell-active")
             results_section.set_visibility(True)
             results_container.clear()
             status_label.text = "Searching for possible matches..."
@@ -233,6 +237,8 @@ def _register_pages() -> None:
             status_label.text = ""
             results_container.clear()
             clear_clarification()
+            close_filters()
+            app_shell.classes(remove="app-shell-active")
             results_section.set_visibility(False)
             process_panel.set_visibility(False)
 

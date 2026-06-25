@@ -38,22 +38,36 @@ body {
 .app-shell {
   width: min(100%, 1180px);
   min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 0;
   margin: 0 auto;
   padding: 30px 28px 64px;
+  transition: align-content 180ms ease;
+}
+
+.app-shell-active {
+  align-content: start;
 }
 
 .search-section {
   display: grid;
   justify-items: center;
-  gap: 18px;
-  padding-top: clamp(34px, 8vh, 92px);
+  gap: 16px;
+  padding-top: 0;
+  transition: padding-top 180ms ease, transform 180ms ease;
+}
+
+.app-shell-active .search-section {
+  padding-top: clamp(18px, 4vh, 42px);
+  transform: translateY(-8px);
 }
 
 .brand {
   justify-self: start;
   width: min(100%, 920px);
   color: var(--ink);
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 760;
   line-height: 1;
 }
@@ -61,7 +75,7 @@ body {
 .page-title {
   padding-top: 30px;
   color: var(--ink);
-  font-size: clamp(38px, 6vw, 64px);
+  font-size: clamp(34px, 6vw, 60px);
   font-weight: 620;
   line-height: 1.05;
   text-align: center;
@@ -122,7 +136,6 @@ body {
 
 .icon-button,
 .search-button,
-.subtle-button,
 .choice-chip {
   font-weight: 650;
 }
@@ -137,6 +150,10 @@ body {
 .icon-button-active {
   color: var(--ink);
   background: var(--surface-soft);
+}
+
+.reset-icon {
+  color: var(--quiet);
 }
 
 .search-button {
@@ -185,23 +202,6 @@ body {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
-}
-
-.filters-footer {
-  justify-content: flex-end;
-  padding-top: 12px;
-}
-
-.subtle-button {
-  min-width: 92px;
-  height: 38px;
-  border-radius: 999px;
-  color: var(--muted);
-}
-
-.subtle-button:hover {
-  color: var(--ink);
-  background: var(--surface-soft);
 }
 
 .clarification-banner {
@@ -331,7 +331,7 @@ body {
 .results-section {
   display: grid;
   gap: 18px;
-  padding-top: 42px;
+  padding-top: 24px;
 }
 
 .results-header {
@@ -534,7 +534,7 @@ body {
   border-top: 1px solid var(--line);
 }
 
-.details-expansion .q-expansion-item__container > .q-item {
+.details-expansion .q-expansion-item__container>.q-item {
   min-height: 36px;
   padding: 0 12px;
   color: var(--muted);
@@ -656,6 +656,7 @@ body {
 }
 
 @media (max-width: 900px) {
+
   .filters-grid,
   .process-panel {
     grid-template-columns: 1fr 1fr;
@@ -668,15 +669,16 @@ body {
   }
 
   .search-section {
-    padding-top: 18px;
+    padding-top: 0;
   }
 
   .brand {
     width: 100%;
+    font-size: clamp(42px, 16vw, 62px);
   }
 
   .page-title {
-    padding-top: 22px;
+    padding-top: 0;
   }
 
   .omnibox-main {
