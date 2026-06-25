@@ -5,19 +5,34 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import date
+from html import escape
 from pathlib import Path
+from typing import Any
 
 from nicegui import app, ui
 
-from config.options import LOCATION_OPTIONS, date_options, hour_options, option_label, select_labels
-from contracts import MatchResult, SearchQuery, TimePoint, TimeRange
+from config.options import LOCATION_OPTIONS, option_label, select_labels
+from contracts import (
+    FollowUpQuestion,
+    MatchResult,
+    SearchQuery,
+    SearchResponse,
+    TimePoint,
+    TimeRange,
+)
 from search_service import search_items
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = PROJECT_ROOT / "src" / "static"
-PLACEHOLDER_COLORS = ("#dce9f6", "#f1f5f9")
 ITEM_IMAGE_DIR = PROJECT_ROOT / "data" / "cropped_item_image"
+PROCESS_STAGES = (
+    "Starting search engine...",
+    "Analyzing description...",
+    "Scanning visual database...",
+    "Ranking results by time and location...",
+)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -40,239 +55,477 @@ def _register_pages() -> None:
     @ui.page("/")
     def index() -> None:
         ui.add_head_html('<link rel="stylesheet" href="/static/styles.css">')
+        ui.add_head_html(_detail_image_zoom_script())
 
-        with ui.element("main").classes("app-shell"):
-            with ui.element("section").classes("search-panel"):
-                with ui.element("div").classes("search-copy"):
-                    ui.label("GrepL").classes("brand")
+        with ui.element("main").classes("app-shell") as app_shell:
+            with ui.element("section").classes("search-section"):
+                ui.label("GrepL").classes("brand")
+                with ui.element("div").classes("search-body"):
                     ui.label("Campus Lost & Found").classes("page-title")
-                    ui.label("Describe your lost item and review candidate matches from the found-item library.").classes(
-                        "intro-text"
-                    )
+                    ui.label(
+                        "Describe what you lost. Add time or location only when it helps."
+                    ).classes("intro-text")
 
-                with ui.element("div").classes("search-bar"):
-                    with ui.element("div").classes("search-segment search-segment-description"):
-                        description = (
-                            ui.textarea(
-                                label="Item Description",
-                                placeholder="Example: blue bottle with stickers",
+                    with ui.element("div").classes("omnibox"):
+                        with ui.row().classes("omnibox-main"):
+                            description = (
+                                ui.input(placeholder="Describe the item you lost")
+                                .classes("description-input")
+                                .props("borderless clearable")
                             )
-                            .classes("description-field search-control")
-                            .props("borderless autogrow clearable")
-                        )
-                    with ui.element("div").classes("search-segment search-segment-time"):
-                        with ui.column().classes("time-range-group"):
-                            ui.label("Lost Time Range").classes("field-group-title")
-                            with ui.row().classes("time-range-row"):
-                                start_date = (
-                                    ui.select(options=date_options(), label="Start Date", value="")
-                                    .classes("time-select search-control")
-                                    .props("borderless")
-                                )
-                                start_hour = (
-                                    ui.select(options=hour_options(), label="Start Hour", value="")
-                                    .classes("time-select search-control")
-                                    .props("borderless")
-                                )
-                            with ui.row().classes("time-range-row"):
-                                end_date = (
-                                    ui.select(options=date_options(), label="End Date", value="")
-                                    .classes("time-select search-control")
-                                    .props("borderless")
-                                )
-                                end_hour = (
-                                    ui.select(options=hour_options(), label="End Hour", value="")
-                                    .classes("time-select search-control")
-                                    .props("borderless")
-                                )
-                    with ui.element("div").classes("search-segment search-segment-location"):
-                        lost_location = (
-                            ui.select(
-                                options=select_labels(LOCATION_OPTIONS),
-                                label="Lost Location",
-                                value="any",
+                            filters_button = (
+                                ui.button(icon="tune")
+                                .classes("icon-button")
+                                .props("flat round type=button aria-label='Filters'")
                             )
-                            .classes("w-full search-control")
-                            .props("borderless")
-                        )
-                    with ui.element("div").classes("search-segment search-segment-limit"):
-                        result_limit = (
-                            ui.number(label="Number of Results", value=5, min=1, max=10, step=1)
-                            .classes("w-full search-control")
-                            .props("borderless")
-                        )
-                    with ui.row().classes("action-row"):
-                        search_button = ui.button("Search", icon="search").classes("primary-action").props(
-                            "unelevated no-caps"
-                        )
-                        reset_button = ui.button("Reset", icon="refresh").classes("secondary-action").props(
-                            "flat no-caps"
-                        )
+                            reset_button = (
+                                ui.button(icon="refresh")
+                                .classes("icon-button reset-icon")
+                                .props("flat round type=button aria-label='Reset'")
+                            )
+                            search_button = (
+                                ui.button("Search", icon="search")
+                                .classes("search-button")
+                                .props("unelevated no-caps type=button")
+                            )
 
-                with ui.row().classes("loading-row") as loading_row:
-                    ui.spinner("dots", size="md", color="primary")
-                    ui.label("Searching found items...").classes("loading-text")
-                loading_row.set_visibility(False)
+                        with ui.element("div").classes(
+                            "filters-panel"
+                        ) as filters_panel:
+                            filters_panel.set_visibility(False)
+                            with ui.element("div").classes("filters-grid"):
+                                start_date = _date_input("Start date")
+                                end_date = _date_input("End date")
+                                lost_location = (
+                                    ui.select(
+                                        options=select_labels(LOCATION_OPTIONS),
+                                        label="Lost location",
+                                        value="any",
+                                    )
+                                    .classes("filter-control")
+                                    .props("borderless")
+                                )
+                                result_limit = (
+                                    ui.number(
+                                        label="Number of results",
+                                        value=5,
+                                        min=1,
+                                        max=10,
+                                        step=1,
+                                    )
+                                    .classes("filter-control")
+                                    .props("borderless")
+                                )
+                    with ui.element("div").classes(
+                        "clarification-banner"
+                    ) as clarification_banner:
+                        clarification_banner.set_visibility(False)
 
-            with ui.element("section").classes("results-panel"):
+                    with ui.element("div").classes("process-panel") as process_panel:
+                        process_steps = []
+                        for label in PROCESS_STAGES:
+                            with ui.element("div").classes("process-step") as step:
+                                ui.icon("check").classes("process-check")
+                                ui.element("span").classes("process-dot")
+                                ui.label(label).classes("process-label")
+                            process_steps.append(step)
+                    process_panel.set_visibility(False)
+
+            with ui.element("section").classes("results-section") as results_section:
                 with ui.row().classes("results-header"):
-                    with ui.column().classes("header-copy"):
-                        ui.label("Candidate Matches").classes("section-title")
-                        status_label = ui.label("Enter a description to begin.").classes("status-text")
-                    ui.icon("inventory_2").classes("header-icon")
+                    ui.label("Candidate Matches").classes("section-title")
+                    status_label = ui.label("").classes("status-text")
+                results_container = ui.element("div").classes("results-grid")
+            results_section.set_visibility(False)
 
-                results_container = ui.column().classes("results-grid")
-                _render_empty_state(results_container)
+        def toggle_filters() -> None:
+            next_visible = not filters_panel.visible
+            filters_panel.set_visibility(next_visible)
+            if next_visible:
+                filters_button.classes(add="icon-button-active")
+            else:
+                filters_button.classes(remove="icon-button-active")
 
-        async def handle_search() -> None:
+        def close_filters() -> None:
+            filters_panel.set_visibility(False)
+            filters_button.classes(remove="icon-button-active")
+
+        def set_process_stage(
+            index: int, *, done: bool = False, error: bool = False
+        ) -> None:
+            process_panel.set_visibility(True)
+            for step_index, step in enumerate(process_steps):
+                step.classes(
+                    remove="process-step-active process-step-complete process-step-error"
+                )
+                if error and step_index == index:
+                    step.classes(add="process-step-error")
+                elif done or step_index < index:
+                    step.classes(add="process-step-complete")
+                elif step_index == index:
+                    step.classes(add="process-step-active")
+
+        def clear_clarification() -> None:
+            clarification_banner.clear()
+            clarification_banner.set_visibility(False)
+
+        def current_query() -> SearchQuery | None:
             query_text = (description.value or "").strip()
             if not query_text:
-                ui.notify("Please enter an item description.", color="warning", position="top")
                 description.props("error error-message='Description is required'")
-                return
-
+                ui.notify(
+                    "Please enter an item description.", color="warning", position="top"
+                )
+                return None
             description.props(remove="error error-message")
-            search_button.disable()
-            loading_row.set_visibility(True)
-            status_label.text = "Finding possible matches..."
+            return SearchQuery(
+                description=query_text,
+                lost_time_range=_build_time_range(start_date.value, end_date.value),
+                lost_location=lost_location.value or "any",
+                result_limit=int(result_limit.value or 5),
+            )
+
+        async def run_search(query: SearchQuery) -> None:
+            clear_clarification()
+            close_filters()
+            app_shell.classes(add="app-shell-active")
+            results_section.set_visibility(True)
             results_container.clear()
+            status_label.text = "Searching for possible matches..."
+            search_button.disable()
+            set_process_stage(0)
 
             try:
-                query = SearchQuery(
-                    description=query_text,
-                    lost_time_range=_build_time_range(
-                        start_date.value,
-                        start_hour.value,
-                        end_date.value,
-                        end_hour.value,
-                    ),
-                    lost_location=lost_location.value or "any",
-                    result_limit=int(result_limit.value or 5),
-                )
-                results = await asyncio.to_thread(search_items, query)
-                results_container.clear()
-                if results:
-                    status_label.text = f"Showing {len(results)} possible match{'es' if len(results) != 1 else ''}."
-                    _render_results(results_container, results)
-                else:
-                    status_label.text = "No matches found."
-                    _render_empty_state(results_container, "No candidates yet", "Try adding a color, visual feature, or location.")
+                set_process_stage(1)
+                await asyncio.sleep(0.18)
+                response = await asyncio.to_thread(search_items, query)
+
+                if response.follow_up is not None:
+                    status_label.text = "Clarification needed."
+                    set_process_stage(1)
+                    render_clarification(query, response.follow_up)
+                    return
+
+                set_process_stage(2)
+                await asyncio.sleep(0.18)
+                set_process_stage(3)
+                await asyncio.sleep(0.18)
+                set_process_stage(3, done=True)
+                render_response(response)
             except Exception:
                 LOGGER.exception("Search failed while rendering results.")
                 status_label.text = "Search failed."
                 results_container.clear()
-                _render_error_state(results_container)
+                set_process_stage(3, error=True)
+                _render_empty_state(
+                    results_container,
+                    "Something went wrong",
+                    "Please try again or check whether the backend modules are available.",
+                    icon="error",
+                )
             finally:
-                loading_row.set_visibility(False)
                 search_button.enable()
+
+        def render_clarification(
+            query: SearchQuery, follow_up: FollowUpQuestion
+        ) -> None:
+            clarification_banner.clear()
+            clarification_banner.set_visibility(True)
+            with clarification_banner:
+                with ui.row().classes("clarification-content"):
+                    ui.icon("help_outline").classes("clarification-icon")
+                    with ui.column().classes("clarification-copy"):
+                        ui.label("Clarification").classes("clarification-title")
+                        ui.label(follow_up.question).classes("clarification-question")
+                    with ui.row().classes("chip-row"):
+                        for option in follow_up.options:
+                            ui.button(
+                                option,
+                                on_click=lambda selected=option: asyncio.create_task(
+                                    run_search(
+                                        _query_with_follow_up(
+                                            query, follow_up, selected
+                                        )
+                                    )
+                                ),
+                            ).classes("choice-chip").props("flat no-caps")
+
+        def render_response(response: SearchResponse) -> None:
+            results_container.clear()
+            results = response.results
+            if not results:
+                status_label.text = "No matches found."
+                _render_empty_state(
+                    results_container,
+                    "No candidates found",
+                    "Try adding a color, visual feature, or location.",
+                )
+                return
+
+            match_text = "match" if len(results) == 1 else "matches"
+            status_label.text = f"Showing {len(results)} possible {match_text}."
+            _render_results(results_container, results)
+
+        async def handle_search() -> None:
+            query = current_query()
+            if query is not None:
+                await run_search(query)
 
         def handle_reset() -> None:
             description.value = ""
-            start_date.value = ""
-            start_hour.value = ""
-            end_date.value = ""
-            end_hour.value = ""
+            description.props(remove="error error-message")
+            start_date.value = None
+            end_date.value = None
             lost_location.value = "any"
             result_limit.value = 5
-            status_label.text = "Enter a description to begin."
+            status_label.text = ""
             results_container.clear()
-            _render_empty_state(results_container)
+            clear_clarification()
+            close_filters()
+            results_section.set_visibility(False)
+            process_panel.set_visibility(False)
+            app_shell.classes(remove="app-shell-active")
+            description.update()
+            start_date.update()
+            end_date.update()
+            lost_location.update()
+            result_limit.update()
 
+        filters_button.on_click(toggle_filters)
         search_button.on_click(handle_search)
         reset_button.on_click(handle_reset)
 
 
-def _render_results(container: ui.column, results: list[MatchResult]) -> None:
+def _date_input(label: str) -> ui.input:
+    today = date.today().isoformat()
+    return (
+        ui.input(label=label)
+        .classes("filter-control")
+        .props(f'borderless type="date" max="{today}"')
+    )
+
+
+def _query_with_follow_up(
+    query: SearchQuery, follow_up: FollowUpQuestion, answer: str
+) -> SearchQuery:
+    next_query = SearchQuery(
+        description=query.description,
+        search_text=query.search_text,
+        use_original_query=query.use_original_query,
+        lost_time_range=query.lost_time_range,
+        lost_location=query.lost_location,
+        result_limit=query.result_limit,
+        item_type_hint=query.item_type_hint,
+        color_hint=query.color_hint,
+        special_notes=list(query.special_notes),
+        component_color_hints=dict(query.component_color_hints),
+    )
+
+    if follow_up.target == "item_type_hint":
+        if answer == "None of the above":
+            next_query.use_original_query = True
+            next_query.search_text = None
+            next_query.item_type_hint = None
+            next_query.color_hint = None
+            next_query.special_notes = []
+            next_query.component_color_hints = {}
+        else:
+            next_query.item_type_hint = answer
+    elif follow_up.target == "special_notes" and answer.lower().startswith("no"):
+        next_query.special_notes = ["__IGNORE__"]
+
+    return next_query
+
+
+def _render_results(container: ui.element, results: list[MatchResult]) -> None:
     with container:
         for index, result in enumerate(results, start=1):
             _render_result_card(index, result)
 
 
 def _render_result_card(index: int, result: MatchResult) -> None:
-    with ui.card().classes("result-card"):
-        with ui.row().classes("result-main"):
-            image_url = _image_url(result.image_path)
-            if image_url:
-                ui.image(image_url).classes("item-image")
-            else:
-                with ui.element("div").classes("item-image image-fallback"):
-                    ui.icon("image_not_supported").classes("fallback-icon")
-                    ui.label("Image unavailable").classes("fallback-text")
+    with ui.element("article").classes("result-card"):
+        with ui.element("div").classes("card-summary"):
+            with ui.element("div").classes("image-frame"):
+                _render_result_image(result)
+            with ui.element("div").classes("summary-content"):
+                with ui.row().classes("card-topline"):
+                    ui.label(f"Candidate #{index}").classes("candidate-title")
+                    ui.label(_confidence_text(result.confidence_label)).classes(
+                        f"confidence-tag confidence-{_confidence_key(result.confidence_label)}"
+                    )
+                with ui.row().classes("meta-row"):
+                    _metadata("place", _format_location(result.found_location))
+                    _metadata("schedule", _format_time_point(result.found_time))
+                with (
+                    ui.element("div")
+                    .classes("score-ring")
+                    .style(_score_ring_style(result.overall_match))
+                ):
+                    ui.label(_percent(result.overall_match)).classes("score-ring-value")
 
-            with ui.column().classes("result-content"):
-                with ui.row().classes("result-topline"):
-                    ui.label(f"#{index}").classes("rank-badge")
-                    ui.label(result.confidence_label).classes(_confidence_class(result.confidence_label))
-                ui.label(f"Candidate #{index}").classes("item-title")
-                ui.label("Review this item visually before claiming it.").classes("candidate-note")
-                ui.label(_found_summary(result)).classes("item-meta")
-
-                with ui.row().classes("score-row"):
-                    _score_pill("Overall Match", result.overall_match)
-                    _score_pill("Visual Similarity", result.visual_similarity)
-                    _score_pill("Place Match", result.location_match)
-
-                _reason_list("Why It May Match", result.reasons, "check_circle")
-                if result.mismatch_notes:
-                    _reason_list("Why This May Not Match", result.mismatch_notes, "info")
+        detail_dialog = _render_result_detail_dialog(index, result)
+        ui.button("Details", on_click=detail_dialog.open).classes("details-button").props(
+            "flat dense no-caps type=button"
+        )
 
 
-def _score_pill(label: str, value: float | None) -> None:
-    with ui.element("div").classes("score-pill"):
-        ui.label(label).classes("score-label")
-        ui.label(_percent(value)).classes("score-value")
+def _render_result_detail_dialog(index: int, result: MatchResult) -> ui.dialog:
+    with (
+        ui.dialog()
+        .classes("detail-dialog")
+        .props("transition-show=fade transition-hide=fade") as detail_dialog
+    ):
+        with ui.element("div").classes("detail-modal-card"):
+            with ui.element("div").classes("detail-image-pane"):
+                _render_zoomable_result_image(index, result)
+            with ui.element("div").classes("detail-info-pane"):
+                with ui.row().classes("detail-modal-topline"):
+                    with ui.element("div").classes("detail-title-block"):
+                        ui.label(f"Candidate #{index}").classes("detail-modal-title")
+                        ui.label(_format_location(result.found_location)).classes(
+                            "detail-modal-subtitle"
+                        )
+                    ui.button(icon="close", on_click=detail_dialog.close).classes(
+                        "detail-close-button"
+                    ).props("flat round type=button aria-label='Close details'")
+
+                with ui.element("div").classes("detail-confidence-card"):
+                    with ui.element("div").classes("detail-confidence-copy"):
+                        ui.label("Confidence").classes("detail-section-kicker")
+                        ui.label(_confidence_text(result.confidence_label)).classes(
+                            "detail-confidence-value"
+                        )
+                    ui.label(_percent(result.overall_match)).classes(
+                        "detail-overall-score"
+                    )
+
+                with ui.element("div").classes("detail-meta-grid"):
+                    _metadata("schedule", _format_time_point(result.found_time))
+                    _metadata("place", _format_location(result.found_location))
+
+                with ui.element("div").classes("details-panel detail-modal-panel"):
+                    _metric_bar("Visual Similarity", result.visual_similarity)
+                    _metric_bar("Time Match", result.time_match)
+                    _metric_bar("Location Match", result.location_match)
+                    _reason_list(
+                        "Why it matched",
+                        result.reasons,
+                        "check_circle",
+                        "reason-positive",
+                    )
+                    if result.mismatch_notes:
+                        _reason_list(
+                            "Why this may not match",
+                            result.mismatch_notes,
+                            "info",
+                            "reason-warning",
+                        )
+    return detail_dialog
 
 
-def _reason_list(title: str, items: list[str], icon_name: str) -> None:
-    with ui.element("div").classes("reason-block"):
-        with ui.row().classes("reason-title-row"):
-            ui.icon(icon_name).classes("reason-icon")
-            ui.label(title).classes("reason-title")
+def _render_zoomable_result_image(index: int, result: MatchResult) -> None:
+    viewport_id = f"detail-image-{index}-{_dom_id_part(result.item_id)}"
+    with ui.element("div").classes("detail-image-viewport").props(f'id="{viewport_id}"'):
+        image_url = _image_url(result.image_path)
+        if image_url:
+            ui.html(
+                '<img '
+                'class="detail-zoom-image" '
+                f'src="{escape(image_url, quote=True)}" '
+                'alt="Candidate item image" '
+                'draggable="false">'
+            )
+        else:
+            with ui.element("div").classes("image-fallback"):
+                ui.icon("image_not_supported").classes("fallback-icon")
+                ui.label("Image unavailable").classes("fallback-text")
+        with ui.row().classes("detail-zoom-controls"):
+            ui.button(icon="remove").classes("detail-zoom-button").props(
+                "flat round dense type=button aria-label='Zoom out'"
+            ).on(
+                "click",
+                lambda: ui.run_javascript(f"window.greplZoomImage('{viewport_id}', 0.85)"),
+            )
+            ui.button(icon="restart_alt").classes("detail-zoom-button").props(
+                "flat round dense type=button aria-label='Reset image zoom'"
+            ).on(
+                "click",
+                lambda: ui.run_javascript(f"window.greplResetImage('{viewport_id}')"),
+            )
+            ui.button(icon="add").classes("detail-zoom-button").props(
+                "flat round dense type=button aria-label='Zoom in'"
+            ).on(
+                "click",
+                lambda: ui.run_javascript(f"window.greplZoomImage('{viewport_id}', 1.18)"),
+            )
+
+
+def _render_result_image(
+    result: MatchResult, *, image_classes: str = "item-image"
+) -> None:
+    image_url = _image_url(result.image_path)
+    if image_url:
+        ui.image(image_url).classes(image_classes)
+    else:
+        with ui.element("div").classes("image-fallback"):
+            ui.icon("image_not_supported").classes("fallback-icon")
+            ui.label("Image unavailable").classes("fallback-text")
+
+
+def _metadata(icon_name: str, text: str) -> None:
+    with ui.row().classes("metadata"):
+        ui.icon(icon_name).classes("metadata-icon")
+        ui.label(text).classes("metadata-text")
+
+
+def _metric_bar(label: str, value: float | None) -> None:
+    score = _clamp(value)
+    with ui.element("div").classes("metric"):
+        with ui.row().classes("metric-header"):
+            ui.label(label).classes("metric-label")
+            ui.label(_percent(value)).classes("metric-value")
+        with ui.element("div").classes("metric-track"):
+            ui.element("div").classes("metric-fill").style(
+                f"width: {round(score * 100)}%"
+            )
+
+
+def _reason_list(title: str, items: list[str], icon_name: str, classes: str) -> None:
+    with ui.element("div").classes(f"reason-block {classes}"):
+        ui.label(title).classes("reason-heading")
+        if not items:
+            ui.label("No additional notes.").classes("reason-line")
+            return
         for item in items:
-            ui.label(item).classes("reason-line")
+            with ui.row().classes("reason-row"):
+                ui.icon(icon_name).classes("reason-icon")
+                ui.label(item).classes("reason-line")
 
 
-def _render_empty_state(container: ui.column, title: str = "Ready to search", detail: str = "Results will appear here after you submit a lost item description.") -> None:
+def _render_empty_state(
+    container: ui.element, title: str, detail: str, *, icon: str = "manage_search"
+) -> None:
     with container:
         with ui.element("div").classes("empty-state"):
-            ui.icon("manage_search").classes("empty-icon")
+            ui.icon(icon).classes("empty-icon")
             ui.label(title).classes("empty-title")
             ui.label(detail).classes("empty-detail")
 
 
-def _render_error_state(container: ui.column) -> None:
-    with container:
-        with ui.element("div").classes("empty-state error-state"):
-            ui.icon("error").classes("empty-icon")
-            ui.label("Something went wrong").classes("empty-title")
-            ui.label("Please try again or check whether the backend modules are available.").classes("empty-detail")
-
-
-def _build_time_range(
-    start_date: str | None,
-    start_hour: str | int | None,
-    end_date: str | None,
-    end_hour: str | int | None,
-) -> TimeRange | None:
-    start = _build_time_point(start_date, start_hour)
-    end = _build_time_point(end_date, end_hour)
+def _build_time_range(start_date: str | None, end_date: str | None) -> TimeRange | None:
+    start = _build_time_point(start_date)
+    end = _build_time_point(end_date)
     if start is None and end is None:
         return None
     return TimeRange(start=start, end=end)
 
 
-def _build_time_point(selected_date: str | None, selected_hour: str | int | None) -> TimePoint | None:
+def _build_time_point(selected_date: str | None) -> TimePoint | None:
     date_value = selected_date or None
-    hour_value = _selected_hour_to_int(selected_hour)
-    if date_value is None and hour_value is None:
+    if date_value is None:
         return None
-    return TimePoint(date=date_value, hour=hour_value)
-
-
-def _selected_hour_to_int(value: str | int | None) -> int | None:
-    if value in (None, ""):
-        return None
-    return int(value)
+    return TimePoint(date=date_value)
 
 
 def _image_url(image_path: str) -> str | None:
@@ -286,10 +539,79 @@ def _image_url(image_path: str) -> str | None:
     return f"/item-images/{relative_path}"
 
 
-def _found_summary(result: MatchResult) -> str:
-    time_text = _format_time_point(result.found_time)
-    location_text = option_label(result.found_location, LOCATION_OPTIONS) or result.found_location or "Location unknown"
-    return f"Found at {location_text} · {time_text}"
+def _dom_id_part(value: str) -> str:
+    cleaned = "".join(character if character.isalnum() else "-" for character in value)
+    return cleaned.strip("-") or "item"
+
+
+def _detail_image_zoom_script() -> str:
+    return """
+<script>
+(() => {
+  if (window.greplImageZoomReady) return;
+  window.greplImageZoomReady = true;
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  const apply = (viewport, scale, x, y) => {
+    const image = viewport.querySelector('.detail-zoom-image');
+    if (!image) return;
+    viewport.dataset.scale = String(scale);
+    viewport.dataset.x = String(x);
+    viewport.dataset.y = String(y);
+    image.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    viewport.classList.toggle('is-zoomed', scale > 1.01);
+  };
+
+  window.greplZoomImage = (id, factor) => {
+    const viewport = document.getElementById(id);
+    if (!viewport) return;
+    const scale = clamp((Number(viewport.dataset.scale) || 1) * factor, 0.5, 4);
+    apply(viewport, scale, Number(viewport.dataset.x) || 0, Number(viewport.dataset.y) || 0);
+  };
+
+  window.greplResetImage = (id) => {
+    const viewport = document.getElementById(id);
+    if (viewport) apply(viewport, 1, 0, 0);
+  };
+
+  document.addEventListener('wheel', (event) => {
+    const viewport = event.target.closest('.detail-image-viewport');
+    if (!viewport) return;
+    event.preventDefault();
+    window.greplZoomImage(viewport.id, event.deltaY < 0 ? 1.08 : 0.92);
+  }, { passive: false });
+
+  document.addEventListener('pointerdown', (event) => {
+    const viewport = event.target.closest('.detail-image-viewport');
+    if (!viewport || (Number(viewport.dataset.scale) || 1) <= 1.01) return;
+    viewport.dataset.dragging = 'true';
+    viewport.dataset.startX = String(event.clientX);
+    viewport.dataset.startY = String(event.clientY);
+    viewport.dataset.originX = viewport.dataset.x || '0';
+    viewport.dataset.originY = viewport.dataset.y || '0';
+    viewport.setPointerCapture?.(event.pointerId);
+  });
+
+  document.addEventListener('pointermove', (event) => {
+    const viewport = event.target.closest('.detail-image-viewport');
+    if (!viewport || viewport.dataset.dragging !== 'true') return;
+    const x = Number(viewport.dataset.originX) + event.clientX - Number(viewport.dataset.startX);
+    const y = Number(viewport.dataset.originY) + event.clientY - Number(viewport.dataset.startY);
+    apply(viewport, Number(viewport.dataset.scale) || 1, x, y);
+  });
+
+  document.addEventListener('pointerup', (event) => {
+    const viewport = event.target.closest('.detail-image-viewport');
+    if (viewport) viewport.dataset.dragging = 'false';
+  });
+})();
+</script>
+"""
+
+
+def _format_location(value: str | None) -> str:
+    return option_label(value, LOCATION_OPTIONS) or value or "Location unknown"
 
 
 def _format_time_point(time_point: TimePoint | None) -> str:
@@ -307,9 +629,30 @@ def _format_time_point(time_point: TimePoint | None) -> str:
 def _percent(value: float | None) -> str:
     if value is None:
         return "N/A"
-    return f"{round(value * 100):d}%"
+    return f"{round(_clamp(value) * 100):d}%"
 
 
-def _confidence_class(label: str) -> str:
-    normalized = label.lower().replace(" ", "-")
-    return f"confidence-badge {normalized}"
+def _clamp(value: Any) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, numeric))
+
+
+def _score_ring_style(value: float | None) -> str:
+    percent = round(_clamp(value) * 100)
+    return f"--score: {percent}%;"
+
+
+def _confidence_text(label: str) -> str:
+    normalized = label.strip().lower()
+    if "high" in normalized or "strong" in normalized:
+        return "High"
+    if "medium" in normalized or "likely" in normalized or "possible" in normalized:
+        return "Medium"
+    return "Low"
+
+
+def _confidence_key(label: str) -> str:
+    return _confidence_text(label).lower()

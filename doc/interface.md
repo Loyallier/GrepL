@@ -11,7 +11,8 @@ def search_items(query: SearchQuery) -> list[MatchResult]:
     ...
 ```
 
-Current implementation uses mock data in `src/mock_data.py`. When the real
+Current implementation uses mock data (prefer `src/mock_data.py`, fallback to
+`src/demo_data.py` if the mock module is unavailable). When the real
 database, image matching, and ranking modules are ready, only
 `src/search_service.py` should need to change.
 

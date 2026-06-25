@@ -30,7 +30,10 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 import keras
 import numpy as np
 from PIL import Image
-from tfclip import create_model_and_transforms
+try:
+    from tfclip import create_model_and_transforms
+except Exception:
+    create_model_and_transforms = None
 
 from contracts import Candidate, LostItem, RegisterItem
 
@@ -92,6 +95,8 @@ def register_item_image(
     """Encode and persist an item's image embedding for later retrieval.
     生成并保存单个物品的图像向量，供后续检索使用。
     """
+    if create_model_and_transforms is None:
+        return False
     try:
         vector = encode_image(registering_item.image_path)
     except (FileNotFoundError, OSError) as error:
@@ -122,6 +127,8 @@ def match_text_to_images(
     """Compare user text with found-item images and return ranker candidates.
     比较用户文本与拾获物品图片，并返回可交给 ranker 的 Candidate 列表。
     """
+    if create_model_and_transforms is None:
+        return []
     text_vector = encode_text(description)
     store_file = Path(store_path)
     store = _read_embedding_store(store_file)
