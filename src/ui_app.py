@@ -12,7 +12,14 @@ from typing import Any
 from nicegui import app, ui
 
 from config.options import LOCATION_OPTIONS, option_label, select_labels
-from contracts import FollowUpQuestion, MatchResult, SearchQuery, SearchResponse, TimePoint, TimeRange
+from contracts import (
+    FollowUpQuestion,
+    MatchResult,
+    SearchQuery,
+    SearchResponse,
+    TimePoint,
+    TimeRange,
+)
 from search_service import search_items
 
 
@@ -20,6 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = PROJECT_ROOT / "src" / "static"
 ITEM_IMAGE_DIR = PROJECT_ROOT / "data" / "cropped_item_image"
 PROCESS_STAGES = (
+    "Starting search engine...",
     "Analyzing description...",
     "Scanning visual database...",
     "Ranking results by time and location...",
@@ -52,7 +60,9 @@ def _register_pages() -> None:
                 ui.label("GrepL").classes("brand")
                 with ui.element("div").classes("search-body"):
                     ui.label("Campus Lost & Found").classes("page-title")
-                    ui.label("Describe what you lost. Add time or location only when it helps.").classes("intro-text")
+                    ui.label(
+                        "Describe what you lost. Add time or location only when it helps."
+                    ).classes("intro-text")
 
                     with ui.element("div").classes("omnibox"):
                         with ui.row().classes("omnibox-main"):
@@ -61,34 +71,52 @@ def _register_pages() -> None:
                                 .classes("description-input")
                                 .props("borderless clearable")
                             )
-                            filters_button = ui.button(icon="tune").classes("icon-button").props(
-                                "flat round type=button aria-label='Filters'"
+                            filters_button = (
+                                ui.button(icon="tune")
+                                .classes("icon-button")
+                                .props("flat round type=button aria-label='Filters'")
                             )
-                            reset_button = ui.button(icon="refresh").classes("icon-button reset-icon").props(
-                                "flat round type=button aria-label='Reset'"
+                            reset_button = (
+                                ui.button(icon="refresh")
+                                .classes("icon-button reset-icon")
+                                .props("flat round type=button aria-label='Reset'")
                             )
-                            search_button = ui.button("Search", icon="search").classes("search-button").props(
-                                "unelevated no-caps type=button"
+                            search_button = (
+                                ui.button("Search", icon="search")
+                                .classes("search-button")
+                                .props("unelevated no-caps type=button")
                             )
 
-                        with ui.element("div").classes("filters-panel") as filters_panel:
+                        with ui.element("div").classes(
+                            "filters-panel"
+                        ) as filters_panel:
                             filters_panel.set_visibility(False)
                             with ui.element("div").classes("filters-grid"):
                                 start_date = _date_input("Start date")
                                 end_date = _date_input("End date")
-                                lost_location = ui.select(
-                                    options=select_labels(LOCATION_OPTIONS),
-                                    label="Lost location",
-                                    value="any",
-                                ).classes("filter-control").props("borderless")
-                                result_limit = ui.number(
-                                    label="Number of results",
-                                    value=5,
-                                    min=1,
-                                    max=10,
-                                    step=1,
-                                ).classes("filter-control").props("borderless")
-                    with ui.element("div").classes("clarification-banner") as clarification_banner:
+                                lost_location = (
+                                    ui.select(
+                                        options=select_labels(LOCATION_OPTIONS),
+                                        label="Lost location",
+                                        value="any",
+                                    )
+                                    .classes("filter-control")
+                                    .props("borderless")
+                                )
+                                result_limit = (
+                                    ui.number(
+                                        label="Number of results",
+                                        value=5,
+                                        min=1,
+                                        max=10,
+                                        step=1,
+                                    )
+                                    .classes("filter-control")
+                                    .props("borderless")
+                                )
+                    with ui.element("div").classes(
+                        "clarification-banner"
+                    ) as clarification_banner:
                         clarification_banner.set_visibility(False)
 
                     with ui.element("div").classes("process-panel") as process_panel:
@@ -120,10 +148,14 @@ def _register_pages() -> None:
             filters_panel.set_visibility(False)
             filters_button.classes(remove="icon-button-active")
 
-        def set_process_stage(index: int, *, done: bool = False, error: bool = False) -> None:
+        def set_process_stage(
+            index: int, *, done: bool = False, error: bool = False
+        ) -> None:
             process_panel.set_visibility(True)
             for step_index, step in enumerate(process_steps):
-                step.classes(remove="process-step-active process-step-complete process-step-error")
+                step.classes(
+                    remove="process-step-active process-step-complete process-step-error"
+                )
                 if error and step_index == index:
                     step.classes(add="process-step-error")
                 elif done or step_index < index:
@@ -139,7 +171,9 @@ def _register_pages() -> None:
             query_text = (description.value or "").strip()
             if not query_text:
                 description.props("error error-message='Description is required'")
-                ui.notify("Please enter an item description.", color="warning", position="top")
+                ui.notify(
+                    "Please enter an item description.", color="warning", position="top"
+                )
                 return None
             description.props(remove="error error-message")
             return SearchQuery(
@@ -157,29 +191,30 @@ def _register_pages() -> None:
             results_container.clear()
             status_label.text = "Searching for possible matches..."
             search_button.disable()
+            set_process_stage(0)
 
             try:
-                set_process_stage(0)
+                set_process_stage(1)
                 await asyncio.sleep(0.18)
                 response = await asyncio.to_thread(search_items, query)
 
                 if response.follow_up is not None:
                     status_label.text = "Clarification needed."
-                    set_process_stage(0)
+                    set_process_stage(1)
                     render_clarification(query, response.follow_up)
                     return
 
-                set_process_stage(1)
-                await asyncio.sleep(0.18)
                 set_process_stage(2)
                 await asyncio.sleep(0.18)
-                set_process_stage(2, done=True)
+                set_process_stage(3)
+                await asyncio.sleep(0.18)
+                set_process_stage(3, done=True)
                 render_response(response)
             except Exception:
                 LOGGER.exception("Search failed while rendering results.")
                 status_label.text = "Search failed."
                 results_container.clear()
-                set_process_stage(2, error=True)
+                set_process_stage(3, error=True)
                 _render_empty_state(
                     results_container,
                     "Something went wrong",
@@ -189,7 +224,9 @@ def _register_pages() -> None:
             finally:
                 search_button.enable()
 
-        def render_clarification(query: SearchQuery, follow_up: FollowUpQuestion) -> None:
+        def render_clarification(
+            query: SearchQuery, follow_up: FollowUpQuestion
+        ) -> None:
             clarification_banner.clear()
             clarification_banner.set_visibility(True)
             with clarification_banner:
@@ -203,7 +240,11 @@ def _register_pages() -> None:
                             ui.button(
                                 option,
                                 on_click=lambda selected=option: asyncio.create_task(
-                                    run_search(_query_with_follow_up(query, follow_up, selected))
+                                    run_search(
+                                        _query_with_follow_up(
+                                            query, follow_up, selected
+                                        )
+                                    )
                                 ),
                             ).classes("choice-chip").props("flat no-caps")
 
@@ -262,7 +303,9 @@ def _date_input(label: str) -> ui.input:
     )
 
 
-def _query_with_follow_up(query: SearchQuery, follow_up: FollowUpQuestion, answer: str) -> SearchQuery:
+def _query_with_follow_up(
+    query: SearchQuery, follow_up: FollowUpQuestion, answer: str
+) -> SearchQuery:
     next_query = SearchQuery(
         description=query.description,
         search_text=query.search_text,
@@ -312,17 +355,32 @@ def _render_result_card(index: int, result: MatchResult) -> None:
                 with ui.row().classes("meta-row"):
                     _metadata("place", _format_location(result.found_location))
                     _metadata("schedule", _format_time_point(result.found_time))
-                with ui.element("div").classes("score-ring").style(_score_ring_style(result.overall_match)):
+                with (
+                    ui.element("div")
+                    .classes("score-ring")
+                    .style(_score_ring_style(result.overall_match))
+                ):
                     ui.label(_percent(result.overall_match)).classes("score-ring-value")
 
-        with ui.expansion("Details").classes("details-expansion").props("dense expand-icon=keyboard_arrow_down"):
+        with (
+            ui.expansion("Details")
+            .classes("details-expansion")
+            .props("dense expand-icon=keyboard_arrow_down")
+        ):
             with ui.element("div").classes("details-panel"):
                 _metric_bar("Visual Similarity", result.visual_similarity)
                 _metric_bar("Time Match", result.time_match)
                 _metric_bar("Location Match", result.location_match)
-                _reason_list("Why it matched", result.reasons, "check_circle", "reason-positive")
+                _reason_list(
+                    "Why it matched", result.reasons, "check_circle", "reason-positive"
+                )
                 if result.mismatch_notes:
-                    _reason_list("Why this may not match", result.mismatch_notes, "info", "reason-warning")
+                    _reason_list(
+                        "Why this may not match",
+                        result.mismatch_notes,
+                        "info",
+                        "reason-warning",
+                    )
 
 
 def _render_result_image(result: MatchResult) -> None:
@@ -348,7 +406,9 @@ def _metric_bar(label: str, value: float | None) -> None:
             ui.label(label).classes("metric-label")
             ui.label(_percent(value)).classes("metric-value")
         with ui.element("div").classes("metric-track"):
-            ui.element("div").classes("metric-fill").style(f"width: {round(score * 100)}%")
+            ui.element("div").classes("metric-fill").style(
+                f"width: {round(score * 100)}%"
+            )
 
 
 def _reason_list(title: str, items: list[str], icon_name: str, classes: str) -> None:
@@ -363,7 +423,9 @@ def _reason_list(title: str, items: list[str], icon_name: str, classes: str) -> 
                 ui.label(item).classes("reason-line")
 
 
-def _render_empty_state(container: ui.element, title: str, detail: str, *, icon: str = "manage_search") -> None:
+def _render_empty_state(
+    container: ui.element, title: str, detail: str, *, icon: str = "manage_search"
+) -> None:
     with container:
         with ui.element("div").classes("empty-state"):
             ui.icon(icon).classes("empty-icon")
