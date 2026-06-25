@@ -1,12 +1,1 @@
-[
-  {
-    "raw_id": "raw_demo_001",
-    "image_path": "data/raw_found_images/raw_demo_001.jpg",
-    "found_time": {
-      "date": "2026-06-16",
-      "hour": 14
-    },
-    "found_location": "library",
-    "status": "pending"
-  }
-]
+[]
