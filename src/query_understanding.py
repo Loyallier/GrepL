@@ -83,6 +83,10 @@ ITEM_LABELS = {
         "keywords": ["watch", "smart watch", "apple watch", "手表", "智能手表"],
         "prompts": ["a photo of a watch", "a photo of a smartwatch"],
     },
+    "Mouse": {
+        "keywords": ["mouse", "wireless mouse", "bluetooth mouse", "computer mouse", "鼠标", "无线鼠标", "蓝牙鼠标"],
+        "prompts": ["a photo of a computer mouse", "a photo of a wireless mouse"],
+    },
 }
 
 COLOR_LABELS = {
@@ -238,13 +242,26 @@ def analyze_query(
         needs_confirmation = True
         follow_up_target = "item_type"
         follow_up_question = "Which item category is the best match?"
-        follow_up_options = list(ITEM_LABELS.keys())[:5]
+        follow_up_options = _dedupe_options(
+            ["Bottle", "Keys", "Earphones", "Student Card", "Wallet", "Umbrella", "Bag", "Phone", "Laptop", "Mouse"]
+        )
     elif item_prediction.margin < 0.12 or fuzzy_detected:
         needs_confirmation = True
         follow_up_target = "item_type"
         follow_up_question = "Please confirm the item category before searching."
         follow_up_options = _dedupe_options(
-            [item_prediction.label, item_prediction.runner_up, "Bottle", "Keys", "Earphones", "Student Card"]
+            [
+                item_prediction.label,
+                item_prediction.runner_up,
+                "Bottle",
+                "Keys",
+                "Earphones",
+                "Student Card",
+                "Wallet",
+                "Phone",
+                "Laptop",
+                "Mouse",
+            ]
         )
     elif color_prediction.label is None and special_notes:
         needs_confirmation = True
