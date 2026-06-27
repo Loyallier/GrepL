@@ -18,16 +18,14 @@ from contracts import Candidate, MatchResult, SearchQuery, TimePoint, TimeRange
 # Default factor weights used when both time and location evidence are available.
 # 当时间和地点证据都可用时使用的默认因子权重。
 BASE_WEIGHTS = {
-    "visual": 0.60,
+    "visual": 0.65,
     "time": 0.20,
     "location": 0.15,
-    "bound": 0.05,
 }
 
 # Low-quality candidate filtering thresholds.
 # 低质量候选项的过滤阈值。
 MIN_VISUAL_SIMILARITY = 0.20
-MIN_BOUND_CONFIDENCE = 0.20
 MIN_OVERALL_MATCH = 0.15
 
 # Location keys that mean the user did not provide usable location evidence.
@@ -128,9 +126,8 @@ def evaluate_matches(
 
     for candidate in candidates:
         visual_similarity = clamp_score(_field(candidate, "visual_similarity", 0.0))
-        bound_confidence = clamp_score(_field(candidate, "bound_confidence", 0.0))
 
-        if visual_similarity < MIN_VISUAL_SIMILARITY or bound_confidence < MIN_BOUND_CONFIDENCE:
+        if visual_similarity < MIN_VISUAL_SIMILARITY:
             continue
 
         found_time = _field(candidate, "found_time", None)
@@ -142,7 +139,6 @@ def evaluate_matches(
             visual_similarity,
             time_match,
             location_match,
-            bound_confidence,
         )
 
         if overall_match < MIN_OVERALL_MATCH:
@@ -162,13 +158,11 @@ def evaluate_matches(
                     visual_similarity,
                     time_match,
                     location_match,
-                    bound_confidence,
                 ),
                 mismatch_notes(
                     visual_similarity,
                     time_match,
                     location_match,
-                    bound_confidence,
                     lost_time_range,
                     normalized_location,
                     found_time,
@@ -278,7 +272,6 @@ def calculate_overall_match(
     visual_similarity: float,
     time_match: float | None,
     location_match: float | None,
-    bound_confidence: float,
 ) -> float:
     """
     Calculate the weighted final score with dynamic weight transfer.
@@ -290,7 +283,6 @@ def calculate_overall_match(
         clamp_score(visual_similarity) * weights["visual"]
         + (0.0 if time_match is None else clamp_score(time_match) * weights["time"])
         + (0.0 if location_match is None else clamp_score(location_match) * weights["location"])
-        + clamp_score(bound_confidence) * weights["bound"]
     )
     return round(clamp_score(score), 4)
 
@@ -328,7 +320,6 @@ def positive_reasons(
     visual_similarity: float,
     time_match: float | None,
     location_match: float | None,
-    bound_confidence: float,
 ) -> list[str]:
     """
     Generate positive human-readable matching reasons.
@@ -358,7 +349,6 @@ def mismatch_notes(
     visual_similarity: float,
     time_match: float | None,
     location_match: float | None,
-    bound_confidence: float,
     lost_time_range: TimeRange | None,
     lost_location: str | None,
     found_time: TimePoint | None,
@@ -389,9 +379,6 @@ def mismatch_notes(
             notes.append("The item's found location is different from the selected lost location.")
         elif not _is_scored_location(_clean_location_key(found_location)):
             notes.append("The item does not have found-location information.")
-
-    if bound_confidence < 0.50:
-        notes.append("The detected item region may be inaccurate.")
 
     return notes
 
