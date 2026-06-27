@@ -1,100 +1,43 @@
 GrepL 使用说明
 
 一、快速开始流程
+0. 克隆仓库
+在本地终端执行：git clone https://github.com/Loyallier/GrepL.git
 
 1. 配置 Python 环境
-
-请确保本机已安装并可以正常使用：
-
-Python 3.10
+请确保本机已安装并可以正常使用 Python 3.10
 
 2. 安装项目通用依赖
-
 项目通用 Python 库已记录在 requirements.txt 中。请先在项目根目录执行：
-
 pip install -r requirements.txt
 
-注意：深度学习计算框架 TensorFlow 和 tensorflow-text 请根据本机系统与硬件情况单独安装，具体方式见后文“TensorFlow 安装说明”。
-
-3. 安装 TensorFlow 与 tensorflow-text
-
-请根据本机操作系统和硬件条件选择以下一种方式安装。
-
-方式 A：Windows / Linux，具有 NVIDIA GPU 且需要硬件加速
-
-如果需要使用 GPU 进行模型推理或训练，请确保本地已安装适配 GPU 型号的 CUDA 12+ 和 cuDNN 8.9+，并自行核对 TensorFlow 2.18 的官方要求。
-
-执行：
-
-pip install tensorflow[and-cuda]>=2.18.0
-pip install tensorflow-text>=2.18.0
-
-方式 B：Windows / Linux / Mac，仅使用 CPU 推理
-
-如果机器没有 NVIDIA 显卡，或者只需要运行简单推理任务，可直接安装 CPU 版本：
-
-pip install tensorflow-cpu>=2.18.0
-pip install tensorflow-text>=2.18.0
-
-方式 C：Mac，Apple Silicon 芯片，如 M1 / M2 / M3 / M4
-
-Mac 芯片用户可使用以下命令：
-
-pip install tensorflow>=2.18.0
-pip install tensorflow-text>=2.18.0
-
-说明：从 TensorFlow 2.16 开始，Mac 平台的加速已原生集成在主包中，无需额外安装 tensorflow-metal，但请确保 macOS 系统版本较新。
-
-4. 启动浏览器界面
-
-当前项目提供 NiceGUI 浏览器界面。运行后会打开本地网页：
-
-python main.py
-
-如果提示 NiceGUI 未安装，请重新执行：
-
-pip install -r requirements.txt
-
-5. 导入原始拾获图片
-
+3. 导入原始拾获图片
 如需将一批原始拾获图片加入数据库，请使用：
-
 python scripts/add_raw_found_images.py "需要导入的图片文件夹路径"
-
-示例：
-
-python scripts/add_raw_found_images.py "E:\lost_items\raw_images"
-
+示例：python scripts/add_raw_found_images.py "E:\lost_items\raw_images"
 支持的图片格式：
-
-.jpg
-.jpeg
-.png
-.webp
-.bmp
-
+    .jpg
+    .jpeg
+    .png
+    .webp
+    .bmp
 运行脚本后，终端会逐张询问每张原图对应的发现时间和发现地点。导入完成后，图片会被复制到 data/raw_found_images 文件夹，并在 data/raw_found_image_info.json 中生成对应记录。
 
-6. 执行完整登记流程
-
+4. 执行完整登记流程
 导入原始图片后，运行登记中控，完成检测、裁剪、LostItem 生成和向量登记：
-
 python scripts/run_registration.py
-
-7. 暂时跳过图片向量化
-
 如果只想完成原图处理、检测裁剪和 LostItem 生成，暂时不进行图片向量化，可以执行：
-
 python scripts/run_registration.py --skip-embedding
 
+5. 启动浏览器界面
+当前项目提供 NiceGUI 浏览器界面。运行后会打开本地网页：
+python main.py
+如果提示 NiceGUI 未安装，请重新执行：pip install -r requirements.txt
+
 二、常用脚本说明
-
 1. main.py
-
 用于启动项目主程序和 NiceGUI 浏览器界面。
-
 运行方式：
-
 python main.py
 
 2. scripts/add_raw_found_images.py

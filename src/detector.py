@@ -21,6 +21,8 @@ DEFAULT_DNN_CONFIDENCE_THRESHOLD = 0.10
 DEFAULT_FOREGROUND_CONFIDENCE_THRESHOLD = 0.35
 DEFAULT_DNN_INPUT_SIZE = 640
 DEFAULT_MAX_OBJECTS = 30
+DEFAULT_CROP_BOTTOM_RIGHT_PADDING_RATIO = 0.012
+DEFAULT_CROP_BOTTOM_RIGHT_PADDING_MAX = 16
 FALLBACK_FULL_IMAGE_CONFIDENCE = 0.2
 LOGGER = logging.getLogger(__name__)
 
@@ -134,9 +136,14 @@ def crop_detected_objects(
             normalized_box = _normalize_box(object_box, width, height)
             if normalized_box is None:
                 continue
+            crop_box = _expand_crop_box_bottom_right(
+                normalized_box,
+                image_width=width,
+                image_height=height,
+            )
 
             crop_path = crop_dir / f"{source_path.stem}_object_{index:03d}.png"
-            image.crop(normalized_box).save(crop_path)
+            image.crop(crop_box).save(crop_path)
             cropped_items.append(
                 RowItem(
                     image_path=str(crop_path),
@@ -725,6 +732,33 @@ def _normalize_box(
     if right <= left or bottom <= top:
         return None
     return left, top, right, bottom
+
+
+def _expand_crop_box_bottom_right(
+    box: tuple[int, int, int, int],
+    *,
+    image_width: int,
+    image_height: int,
+) -> tuple[int, int, int, int]:
+    left, top, right, bottom = box
+    padding = max(
+        2,
+        min(
+            DEFAULT_CROP_BOTTOM_RIGHT_PADDING_MAX,
+            int(
+                round(
+                    min(image_width, image_height)
+                    * DEFAULT_CROP_BOTTOM_RIGHT_PADDING_RATIO
+                )
+            ),
+        ),
+    )
+    return (
+        left,
+        top,
+        min(image_width, right + padding),
+        min(image_height, bottom + padding),
+    )
 
 
 def _box_area(object_box: ObjectBox) -> int:
