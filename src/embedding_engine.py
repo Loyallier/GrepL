@@ -30,10 +30,7 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 import keras
 import numpy as np
 from PIL import Image
-try:
-    from tfclip import create_model_and_transforms
-except Exception:
-    create_model_and_transforms = None
+from tfclip import create_model_and_transforms
 
 from contracts import Candidate, LostItem, RegisterItem
 
@@ -46,6 +43,19 @@ MODEL_NAME = os.environ.get("GREPL_TFCLIP_MODEL_NAME", "ViT-B-32")
 PRETRAINED = os.environ.get("GREPL_TFCLIP_PRETRAINED", "laion2b_s34b_b79k")
 WEIGHTS_PATH = os.environ.get("GREPL_TFCLIP_WEIGHTS_PATH")
 EXPECTED_EMBEDDING_DIMENSION = int(os.environ.get("GREPL_TFCLIP_EMBEDDING_DIMENSION", "512"))
+DEFAULT_CLASSIFICATION_LABELS = (
+    "a photo of an umbrella",
+    "a photo of a water bottle",
+    "a photo of a phone",
+    "a photo of a bag",
+    "a photo of a shoe",
+    "a photo of keys",
+    "a photo of an ID card",
+    "a photo of a book",
+    "a photo of a laptop",
+    "a photo of clothes",
+)
+DEFAULT_CLASSIFICATION_TEMPERATURE = float(os.environ.get("GREPL_TFCLIP_SOFTMAX_TEMPERATURE", "0.01"))
 
 LOGGER = logging.getLogger(__name__)
 
@@ -95,8 +105,6 @@ def register_item_image(
     """Encode and persist an item's image embedding for later retrieval.
     生成并保存单个物品的图像向量，供后续检索使用。
     """
-    if create_model_and_transforms is None:
-        return False
     try:
         vector = encode_image(registering_item.image_path)
     except (FileNotFoundError, OSError) as error:
@@ -127,8 +135,6 @@ def match_text_to_images(
     """Compare user text with found-item images and return ranker candidates.
     比较用户文本与拾获物品图片，并返回可交给 ranker 的 Candidate 列表。
     """
-    if create_model_and_transforms is None:
-        return []
     text_vector = encode_text(description)
     store_file = Path(store_path)
     store = _read_embedding_store(store_file)
@@ -179,6 +185,38 @@ def match_text_to_images(
     return candidates
 
 
+def classify_image_with_labels(
+    image_path: str | Path,
+    labels: Iterable[str] = DEFAULT_CLASSIFICATION_LABELS,
+    *,
+    temperature: float = DEFAULT_CLASSIFICATION_TEMPERATURE,
+) -> list[dict[str, float | str]]:
+    """Classify one image among fixed labels with softmax probabilities.
+    使用 softmax 在固定候选标签中给单张图片计算相对分类概率。
+    """
+    label_list = [label.strip() for label in labels if label and label.strip()]
+    if not label_list:
+        raise ValueError("labels must contain at least one non-empty label")
+    if temperature <= 0:
+        raise ValueError("temperature must be greater than 0")
+
+    image_vector = encode_image(image_path)
+    text_vectors = _encode_text_batch(label_list)
+    cosine_scores = np.dot(text_vectors, image_vector)
+    probabilities = _softmax(cosine_scores / float(temperature))
+
+    results = [
+        {
+            "label": label,
+            "probability": round(float(probability), 4),
+            "cosine_similarity": round(float(cosine), 4),
+        }
+        for label, probability, cosine in zip(label_list, probabilities, cosine_scores)
+    ]
+    results.sort(key=lambda result: float(result["probability"]), reverse=True)
+    return results
+
+
 def _ensure_model_loaded() -> None:
     """Lazy-load the TF-CLIP model and split it into text/image encoders.
     延迟加载 TF-CLIP 模型，并拆分出文本编码器和图像编码器。
@@ -208,6 +246,16 @@ def _ensure_model_loaded() -> None:
         outputs=_model.get_layer("vision_head_out").output,
         name="grepl_tfclip_image_encoder",
     )
+
+
+def _encode_text_batch(labels: list[str]) -> np.ndarray:
+    """Encode multiple labels as normalized text vectors.
+    将多个候选标签批量编码为归一化文本向量。
+    """
+    _ensure_model_loaded()
+    tokens = _text_preprocess(labels)
+    vectors = np.asarray(_text_encoder(tokens, training=False).numpy(), dtype="float32")
+    return np.asarray([_l2_normalize(vector) for vector in vectors], dtype="float32")
 
 
 def _resolve_weights_path() -> Path | None:
@@ -349,6 +397,24 @@ def _cosine_to_unit_interval(cosine: float) -> float:
     将余弦相似度从 [-1, 1] 映射为更适合展示的 [0, 1] 分数。
     """
     return round(max(0.0, min(1.0, (cosine + 1.0) / 2.0)), 4)
+
+
+def _softmax(logits: np.ndarray) -> np.ndarray:
+    """Convert logits into a probability distribution.
+    将 logits 转换为概率分布。
+    """
+    values = np.asarray(logits, dtype="float32")
+    if values.ndim != 1 or values.size == 0:
+        raise ValueError("softmax expects a non-empty 1D array")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("softmax logits must be finite")
+
+    shifted = values - np.max(values)
+    exp_values = np.exp(shifted)
+    denominator = float(np.sum(exp_values))
+    if denominator <= 1e-12:
+        return np.full(values.shape, 1.0 / values.size, dtype="float32")
+    return (exp_values / denominator).astype("float32")
 
 
 def _safe_int(value: Any) -> int | None:
