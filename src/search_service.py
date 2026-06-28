@@ -15,6 +15,7 @@ MAX_RESULT_LIMIT = 10
 
 EmbeddingMatcher = Callable[[str, Iterable[LostItem]], Iterable[Candidate]]
 _SPECIAL_NOTES_IGNORE_SENTINEL = "__IGNORE__"
+_SPECIAL_NOTES_KEEP_SENTINEL = "__KEEP__"
 _NONE_OF_ABOVE_OPTION = "None of the above"
 
 
@@ -124,9 +125,10 @@ def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
 
     special_notes = query.special_notes
     ignore_special_notes = _SPECIAL_NOTES_IGNORE_SENTINEL in special_notes
+    keep_special_notes = _SPECIAL_NOTES_KEEP_SENTINEL in special_notes
     if ignore_special_notes:
         special_notes = []
-    elif not special_notes:
+    elif keep_special_notes or not special_notes:
         special_notes = analysis.special_notes
 
     component_colors = query.component_color_hints or analysis.component_colors

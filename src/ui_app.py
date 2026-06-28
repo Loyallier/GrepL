@@ -331,8 +331,10 @@ def _query_with_follow_up(
             next_query.component_color_hints = {}
         else:
             next_query.item_type_hint = answer
-    elif follow_up.target == "special_notes" and answer.lower().startswith("no"):
-        next_query.special_notes = ["__IGNORE__"]
+    elif follow_up.target == "special_notes":
+        next_query.special_notes = [
+            "__IGNORE__" if answer.lower().startswith("no") else "__KEEP__"
+        ]
 
     return next_query
 
