@@ -578,7 +578,12 @@ def _score_date_distance(found: date, start: date, end: date) -> float:
     if start <= found <= end:
         return DATE_SCORE_SAME_DATE
 
-    day_gap = (start - found).days if found < start else (found - end).days
+    # With date-only input, any earlier date is necessarily more than one
+    # hour before the selected lost date and therefore receives the minimum.
+    if found < start:
+        return TIME_SCORE_EARLIER_MORE_THAN_1_HOUR
+
+    day_gap = (found - end).days
     if day_gap == 1:
         return DATE_SCORE_1_DAY_AWAY
     if 2 <= day_gap <= 3:
