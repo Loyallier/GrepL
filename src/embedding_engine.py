@@ -43,19 +43,8 @@ MODEL_NAME = os.environ.get("GREPL_TFCLIP_MODEL_NAME", "ViT-B-32")
 PRETRAINED = os.environ.get("GREPL_TFCLIP_PRETRAINED", "laion2b_s34b_b79k")
 WEIGHTS_PATH = os.environ.get("GREPL_TFCLIP_WEIGHTS_PATH")
 EXPECTED_EMBEDDING_DIMENSION = int(os.environ.get("GREPL_TFCLIP_EMBEDDING_DIMENSION", "512"))
-DEFAULT_CLASSIFICATION_LABELS = (
-    "a photo of an umbrella",
-    "a photo of a water bottle",
-    "a photo of a phone",
-    "a photo of a bag",
-    "a photo of a shoe",
-    "a photo of keys",
-    "a photo of an ID card",
-    "a photo of a book",
-    "a photo of a laptop",
-    "a photo of clothes",
-)
-DEFAULT_CLASSIFICATION_TEMPERATURE = float(os.environ.get("GREPL_TFCLIP_SOFTMAX_TEMPERATURE", "0.01"))
+DISPLAY_SIMILARITY_CENTER = float(os.environ.get("GREPL_TFCLIP_DISPLAY_CENTER", "0.23"))
+DISPLAY_SIMILARITY_SCALE = float(os.environ.get("GREPL_TFCLIP_DISPLAY_SCALE", "0.05"))
 
 LOGGER = logging.getLogger(__name__)
 
@@ -166,7 +155,7 @@ def match_text_to_images(
             continue
 
         cosine = float(np.dot(text_vector, image_vector))
-        visual_similarity = _cosine_to_unit_interval(cosine)
+        visual_similarity = _cosine_to_display_similarity(cosine)
         candidates.append(
             Candidate(
                 item_id=item.item_id,
@@ -184,37 +173,6 @@ def match_text_to_images(
     candidates.sort(key=lambda candidate: candidate.visual_similarity, reverse=True)
     return candidates
 
-
-def classify_image_with_labels(
-    image_path: str | Path,
-    labels: Iterable[str] = DEFAULT_CLASSIFICATION_LABELS,
-    *,
-    temperature: float = DEFAULT_CLASSIFICATION_TEMPERATURE,
-) -> list[dict[str, float | str]]:
-    """Classify one image among fixed labels with softmax probabilities.
-    使用 softmax 在固定候选标签中给单张图片计算相对分类概率。
-    """
-    label_list = [label.strip() for label in labels if label and label.strip()]
-    if not label_list:
-        raise ValueError("labels must contain at least one non-empty label")
-    if temperature <= 0:
-        raise ValueError("temperature must be greater than 0")
-
-    image_vector = encode_image(image_path)
-    text_vectors = _encode_text_batch(label_list)
-    cosine_scores = np.dot(text_vectors, image_vector)
-    probabilities = _softmax(cosine_scores / float(temperature))
-
-    results = [
-        {
-            "label": label,
-            "probability": round(float(probability), 4),
-            "cosine_similarity": round(float(cosine), 4),
-        }
-        for label, probability, cosine in zip(label_list, probabilities, cosine_scores)
-    ]
-    results.sort(key=lambda result: float(result["probability"]), reverse=True)
-    return results
 
 
 def _ensure_model_loaded() -> None:
@@ -247,15 +205,6 @@ def _ensure_model_loaded() -> None:
         name="grepl_tfclip_image_encoder",
     )
 
-
-def _encode_text_batch(labels: list[str]) -> np.ndarray:
-    """Encode multiple labels as normalized text vectors.
-    将多个候选标签批量编码为归一化文本向量。
-    """
-    _ensure_model_loaded()
-    tokens = _text_preprocess(labels)
-    vectors = np.asarray(_text_encoder(tokens, training=False).numpy(), dtype="float32")
-    return np.asarray([_l2_normalize(vector) for vector in vectors], dtype="float32")
 
 
 def _resolve_weights_path() -> Path | None:
@@ -399,23 +348,20 @@ def _cosine_to_unit_interval(cosine: float) -> float:
     return round(max(0.0, min(1.0, (cosine + 1.0) / 2.0)), 4)
 
 
-def _softmax(logits: np.ndarray) -> np.ndarray:
-    """Convert logits into a probability distribution.
-    将 logits 转换为概率分布。
+
+def _cosine_to_display_similarity(cosine: float) -> float:
+    """Sigmoid display mapping for visual_similarity.
+    Sigmoid 展示映射：更平滑，不容易直接顶到 1.0。
     """
-    values = np.asarray(logits, dtype="float32")
-    if values.ndim != 1 or values.size == 0:
-        raise ValueError("softmax expects a non-empty 1D array")
-    if not np.all(np.isfinite(values)):
-        raise ValueError("softmax logits must be finite")
+    if not np.isfinite(cosine):
+        return 0.0
+    if DISPLAY_SIMILARITY_SCALE <= 1e-12:
+        return _cosine_to_unit_interval(cosine)
 
-    shifted = values - np.max(values)
-    exp_values = np.exp(shifted)
-    denominator = float(np.sum(exp_values))
-    if denominator <= 1e-12:
-        return np.full(values.shape, 1.0 / values.size, dtype="float32")
-    return (exp_values / denominator).astype("float32")
-
+    scaled = (float(cosine) - DISPLAY_SIMILARITY_CENTER) / DISPLAY_SIMILARITY_SCALE
+    scaled = max(-60.0, min(60.0, scaled))
+    similarity = 1.0 / (1.0 + float(np.exp(-scaled)))
+    return round(max(0.0, min(1.0, similarity)), 4)
 
 def _safe_int(value: Any) -> int | None:
     """Convert a value to int when possible.
