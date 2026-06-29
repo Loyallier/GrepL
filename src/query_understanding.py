@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-# Concept reference (zero-shot label selection with CLIP text embeddings):
-# https://keras.io/api/keras_hub/models/clip/
-# https://github.com/keras-team/keras-hub
+# Use project's own tfclip-based embedding engine instead of KerasHub:
+# https://github.com/shkarupa-alex/tfclip
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+import sys
+from pathlib import Path
 import re
 
 import numpy as np
 
-try:
-    import keras_hub
-except Exception:  # pragma: no cover - graceful fallback when TF stack is unavailable
-    keras_hub = None
+# Import from embedding_engine
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from embedding_engine import encode_text
 
 
 ITEM_LABELS = {
@@ -377,53 +381,32 @@ def _merge_scores(keyword_scores: dict[str, float], clip_scores: dict[str, float
 
 
 def _clip_label_scores(text: str, prompts_by_label: dict[str, list[str]]) -> dict[str, float]:
-    scorer = _get_clip_scorer()
-    if scorer is None:
-        return {}
-    return scorer.score_labels(text, prompts_by_label)
-
-
-class _ClipTextScorer:
-    """Lazy CLIP text scorer used for zero-shot label selection."""
-
-    def __init__(self) -> None:
-        self.model = keras_hub.models.CLIPBackbone.from_preset("clip_vit_base_patch32")
-        self.processor = keras_hub.models.CLIPPreprocessor.from_preset("clip_vit_base_patch32")
-
-    def score_labels(self, text: str, prompts_by_label: dict[str, list[str]]) -> dict[str, float]:
-        prompts: list[str] = []
-        prompt_labels: list[str] = []
-        for label, label_prompts in prompts_by_label.items():
-            for prompt in label_prompts:
-                prompts.append(prompt)
-                prompt_labels.append(label)
-
-        text_vector = self._encode([text])[0]
-        prompt_vectors = self._encode(prompts)
-
-        per_label: dict[str, list[float]] = {}
-        for label, vector in zip(prompt_labels, prompt_vectors, strict=True):
-            cosine = float(np.dot(text_vector, vector))
-            per_label.setdefault(label, []).append((cosine + 1.0) / 2.0)
-
-        return {label: max(scores) for label, scores in per_label.items()}
-
-    def _encode(self, texts: list[str]) -> np.ndarray:
-        inputs = self.processor(texts)
-        outputs = self.model.get_text_features(inputs).numpy()
-        norms = np.linalg.norm(outputs, axis=1, keepdims=True)
-        norms = np.where(norms == 0, 1.0, norms)
-        return outputs / norms
-
-
-@lru_cache(maxsize=1)
-def _get_clip_scorer() -> _ClipTextScorer | None:
-    if keras_hub is None:
-        return None
     try:
-        return _ClipTextScorer()
+        text_vector = encode_text(text)
     except Exception:
-        return None
+        return {}
+
+    prompts: list[str] = []
+    prompt_labels: list[str] = []
+    for label, label_prompts in prompts_by_label.items():
+        for prompt in label_prompts:
+            prompts.append(prompt)
+            prompt_labels.append(label)
+
+    prompt_vectors = []
+    for p in prompts:
+        try:
+            vec = encode_text(p)
+            prompt_vectors.append(vec)
+        except Exception:
+            prompt_vectors.append(np.zeros_like(text_vector.shape))
+
+    per_label: dict[str, list[float]] = {}
+    for label, vector in zip(prompt_labels, prompt_vectors, strict=True):
+        cosine = float(np.dot(text_vector, vector))
+        per_label.setdefault(label, []).append((cosine + 1.0) / 2.0)
+
+    return {label: max(scores) for label, scores in per_label.items()}
 
 
 def _extract_time_hint(text: str) -> str | None:
