@@ -77,7 +77,7 @@ def main() -> None:
     print(f"\nImported {imported} raw image(s).")
     print(f"Skipped duplicate raw image(s): {skipped_duplicates}.")
     print(f"Updated {RAW_INFO_PATH.relative_to(PROJECT_ROOT)}.")
-    print("Next step: run registration_service.register_pending_raw_found_items().")
+    print("Next step: python scripts/run_registration.py")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -189,7 +189,9 @@ def _sha256_file(path: Path) -> str:
 def _write_records(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f"{path.name}.tmp")
-    temp_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_path.write_text(
+        json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     temp_path.replace(path)
 
 

@@ -1,169 +1,140 @@
-GrepL 使用说明
+GrepL: AI-Powered Campus Lost and Found
+========================================
 
-一、快速开始流程
-0. 克隆仓库
-在本地终端执行：git clone https://github.com/Loyallier/GrepL.git
+1. Overview
+-----------
 
-1. 配置 Python 环境
-请确保本机已安装并可以正常使用 Python 3.10
+GrepL helps users search for lost items in a registered collection of found
+items. The user describes a lost item and may add a date range or campus
+location. The program compares the description with found-item images, ranks
+the candidates, and displays the most likely matches in a browser interface.
 
-2. 安装项目通用依赖
-项目通用 Python 库已记录在 requirements.txt 中。请先在项目根目录执行：
-pip install -r requirements.txt
+The matching process uses TensorFlow and TF-CLIP for text-to-image comparison.
+Time and location filters are also considered when the final results are
+ranked.
 
-3. 导入原始拾获图片
-如需将一批原始拾获图片加入数据库，请使用：
-python scripts/add_raw_found_images.py "需要导入的图片文件夹路径"
-示例：python scripts/add_raw_found_images.py "E:\lost_items\raw_images"
-支持的图片格式：
-    .jpg
-    .jpeg
-    .png
-    .webp
-    .bmp
-运行脚本后，终端会逐张询问每张原图对应的发现时间和发现地点。导入完成后，图片会被复制到 data/raw_found_images 文件夹，并在 data/raw_found_image_info.json 中生成对应记录。
 
-4. 执行完整登记流程
-导入原始图片后，运行登记中控，完成检测、裁剪、LostItem 生成和向量登记：
-python scripts/run_registration.py
-如果只想完成原图处理、检测裁剪和 LostItem 生成，暂时不进行图片向量化，可以执行：
-python scripts/run_registration.py --skip-embedding
+2. Requirements
+---------------
 
-5. 启动浏览器界面
-当前项目提供 NiceGUI 浏览器界面。运行后会打开本地网页：
-python main.py
-如果提示 NiceGUI 未安装，请重新执行：pip install -r requirements.txt
+- Python 3.10
+- A modern web browser
+- Internet access while installing the Python packages
+- Internet access on the first search if the TF-CLIP model weights are not
+  already available locally
+- All project files kept in their original folder structure
 
-二、常用脚本说明
-1. main.py
-用于启动项目主程序和 NiceGUI 浏览器界面。
-运行方式：
-python main.py
+The required Python packages are listed in requirements.txt. TensorFlow and
+the model files require several gigabytes of free disk space.
 
-2. scripts/add_raw_found_images.py
 
-用于将本地文件夹中的原始拾获图片导入 data 数据库。
+3. Installation
+---------------
 
-该脚本只负责导入原图及其发现时间、发现地点等基本信息，不负责检测、裁剪和向量化。
+Open a terminal in the project folder, which is the folder containing main.py.
+Then install the dependencies:
 
-基本流程：
+    python -m pip install -r requirements.txt
 
-1. 在命令行中运行脚本，并通过参数传入一个本地图片文件夹路径
-2. 脚本读取该文件夹第一层中的图片文件
-3. 每张图片被复制到 data/raw_found_images 文件夹
-4. 脚本为每张图片生成规范名称和 raw_id，例如 raw_20260621_001
-5. 终端逐张询问该原图中所有物品共同对应的发现时间和发现地点
-6. 脚本将 raw_id、image_path、found_time、found_location 和 pending 状态绑定为一条记录
-7. 记录写入 data/raw_found_image_info.json
-8. 导入完成后，终端输出本次导入数量，并提示下一步需要运行登记流程
 
-注意事项：
+4. Running the Program
+----------------------
 
-1. 传入路径必须是一个存在的本地文件夹
+From the project folder, run:
 
-2. 当前脚本只读取该文件夹第一层中的图片，不会递归读取子文件夹
+    python main.py
 
-3. 原始文件夹中的图片不会被删除，脚本只会复制一份
+The GrepL interface should open automatically in the default browser. If it
+does not, open the following address manually:
 
-4. 每张原图只生成一条 RawFoundItem 记录
+    http://127.0.0.1:5000
 
-5. 如果一张原图中有多个物品，它们共享同一个发现时间和发现地点
+Keep the terminal open while using GrepL. To stop the program, return to the
+terminal and press Ctrl+C.
 
-6. 脚本写入的记录默认 status 为 pending
 
-7. 后续需要运行 registration_service.register_pending_raw_found_items() 或 scripts/run_registration.py 完成检测、裁剪、LostItem 生成和向量登记
+5. Using GrepL
+--------------
 
-8. scripts/run_registration.py
+1. Enter a clear description in the "Describe the item you lost" field.
+   Include visible details such as the item type, colour, material, pattern,
+   logo, or distinguishing marks.
+2. Select the filter button if a lost date range, campus location, or result
+   limit would help narrow the search.
+3. Select Search.
+4. If GrepL asks a clarification question, select the most suitable answer.
+5. Review the ranked candidate cards. Each card shows the found location,
+   found time, match score, and confidence level.
+6. Select Details to view a larger image and the reasons for the match. The
+   image can be zoomed and dragged.
+7. Use the reset button to clear the current search and begin again.
 
-用于启动后端 register 中控，开始处理原图和相关数据。
+Example description:
 
-正常执行完整登记流程：
+    Black water bottle with a white sticker and a silver lid
 
-python scripts/run_registration.py
+The description is required. Date and location filters are optional. A search
+returns up to 10 candidate matches, depending on the selected result limit.
 
-暂时跳过图片向量化：
 
-python scripts/run_registration.py --skip-embedding
+6. Preparing Found-Item Data (Optional)
+---------------------------------------
 
-三、项目介绍
+The supplied data can be searched immediately when the submission folder
+contains the registered records and their corresponding cropped images. Use
+the following steps only when adding new found-item photographs.
 
-项目名称：
+1. Place the photographs in a separate folder. Supported formats are JPG,
+   JPEG, PNG, WEBP, and BMP. Only files directly inside that folder are read;
+   subfolders are not scanned.
+2. Import the photographs:
 
-GrepL，一个基于 TensorFlow 架构的 AI 驱动失物招领系统
+       python scripts/add_raw_found_images.py "path/to/image_folder(not the image itself)"
 
-项目定位：
+3. For each photograph, enter the found date in YYYY-MM-DD format, the found
+   hour from 0 to 23, and one of the location keys displayed in the terminal.
+   Leave the date or hour empty if it is unknown.
+4. Detect, crop, and register the found items:
 
-GrepL 用于对拾获物品进行登记、图像处理、向量化和搜索。系统可以将一张包含多个物品的原始拾获图片处理为多个独立的 LostItem 记录，并为后续搜索和匹配提供数据基础。
+       python scripts/run_registration.py
 
-四、数据库说明
+The first registration may take longer because the AI models must be loaded.
+The original photographs are copied into data/raw_found_images, detected item
+images are written to data/cropped_item_image, and searchable records are
+stored under data/generated.
 
-data 文件夹作为当前项目的数据库，负责保存原始图片信息、裁剪后的物品图片、可搜索物品记录，以及图像向量化相关文件和索引信息。
 
-1. data/raw_found_images
+7. Main Project Files
+---------------------
 
-用于存储未经裁剪的原始拾获图片。
+- main.py: starts the GrepL browser application.
+- requirements.txt: lists the required Python packages.
+- src/: contains the interface, search, ranking, detection, and AI modules.
+- scripts/: contains the optional data import and registration commands.
+- data/: contains found-item records, images, and generated embeddings.
+- models/: contains the object-detection model files.
 
-这些图片通常是一批同时被找到物品的合照。
 
-2. data/raw_found_image_info.json
+8. Troubleshooting
+------------------
 
-用于存储原始图片对应的入库信息。
+- "NiceGUI is not installed": run the installation command in Section 3.
+- The browser does not open: visit http://127.0.0.1:5000 manually.
+- The first search is slow: allow time for TensorFlow to load and for TF-CLIP
+  weights to download. Do not close the terminal.
+- No candidates are shown: make sure data/generated/found_items.json and the
+  corresponding files in data/cropped_item_image are present. If it's still 
+  unable to work, kindly refer to Section 6.
+- Candidate images are unavailable: keep the data folder unchanged and confirm
+  that the registered image files were included with the project.
+- The application reports that the port is in use: close the other program
+  using port 5000 and run python main.py again.
 
-每条记录对应一张原始图片，对应 RawFoundItem。
-
-主要字段包括：
-
-raw_id：原始图片编号
-image_path：原始图片路径
-found_time：这一批物品被找到的时间
-found_location：这一批物品被找到的位置
-status：原图处理状态，例如 pending
-processed_at：登记中控处理完成后写入的时间
-item_count：这张原图最终生成的 LostItem 数量
-error：仅在处理失败时写入错误信息
-
-3. data/cropped_item_image
-
-用于存储 detector 从原始图片中裁剪出的单个物品图片。
-
-4. data/generated
-
-用于存储登记、搜索和向量化流程中生成的中间产物和结果文件。
-
-5. data/generated/found_items.json
-
-用于存储已经完成登记、可以被搜索的 LostItem 记录。
-
-每条记录对应一个裁剪后的单个物品。
-
-主要字段包括：
-
-item_id：单个可搜索物品的唯一编号
-raw_id：该物品来源于哪一张原始图片
-image_path：裁剪后单个物品图片的路径
-found_time：继承自 RawFoundItem 的 found_time
-found_location：继承自 RawFoundItem 的 found_location
-bound_confidence：检测模型裁剪该物品区域的置信度
-category：可选的单个物品分类，当前可能是多余属性
-embedding_registered：该物品是否已经完成图像向量登记
-registered_at：该 LostItem 写入 found_items.json 的时间
-
-6. data/generated/image_embeddings.json
-
-用于存储图像向量化流程生成的向量数据。
-
-当前 embedding_engine 会把每个 item_id 对应的图像向量、图片路径、模型信息和更新时间写入该文件。
-
-该文件是当前版本实际使用的图像向量库。
-
-五、贡献与协作规范
-
-1. 如果不熟悉 Git 使用，请先找组长，不要乱上传 GitHub。上手确实不容易，组长最多也只会站在桌子上生闷气。
-
-2. 尽量保持文件目录整齐，不要添加多余文件。测试脚本和中间产物，尤其是切割后的图片，请务必加入 .gitignore，不要混入源代码上传。
-
-3. 文件名和提交记录必须使用英文。代码注释建议使用中英双语，最后提交前删除中文注释。英语好的同学可以自行判断。
-
-4. 由于团队内部开发环境不同，请勿直接将 pip freeze 的全部结果覆盖到 requirements.txt 中。
-
-5. 如需引入新的第三方 Python 包，请手动将其追加至 requirements.txt，并注明合理的版本区间。
+9. Team Members
+------------------
+SWE2409044  Pan Quanyou (Leader)
+SWE2409015  Hong Guangyu
+SWE2409030  Liang Yuqi
+SWE2409038  Liu Yuanyuan
+SWE2409046  Song Langkun
+SWE2409061  Yan Nachuan
