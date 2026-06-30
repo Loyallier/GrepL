@@ -7,6 +7,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -39,11 +40,19 @@ def main() -> None:
         raise SystemExit(f"No supported image files found in: {source_dir}")
 
     records = _read_records(RAW_INFO_PATH)
+    existing_hashes = _existing_raw_image_hashes(records)
     RAW_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     imported = 0
+    skipped_duplicates = 0
     for index, source_path in enumerate(images, start=1):
         print(f"\n[{index}/{len(images)}] {source_path.name}")
+        raw_image_sha256 = _sha256_file(source_path)
+        if raw_image_sha256 in existing_hashes:
+            skipped_duplicates += 1
+            print(f"Skipped duplicate raw image: {source_path.name}")
+            continue
+
         found_time = _prompt_time()
         found_location = _prompt_location()
         raw_id = _new_raw_id(records)
@@ -56,14 +65,17 @@ def main() -> None:
                 "image_path": _project_relative(target_path),
                 "found_time": found_time,
                 "found_location": found_location,
+                "raw_image_sha256": raw_image_sha256,
                 "status": "pending",
             }
         )
+        existing_hashes.add(raw_image_sha256)
         imported += 1
         print(f"Imported {source_path.name} -> {target_path.name}")
 
     _write_records(RAW_INFO_PATH, records)
     print(f"\nImported {imported} raw image(s).")
+    print(f"Skipped duplicate raw image(s): {skipped_duplicates}.")
     print(f"Updated {RAW_INFO_PATH.relative_to(PROJECT_ROOT)}.")
     print("Next step: run registration_service.register_pending_raw_found_items().")
 
@@ -155,6 +167,23 @@ def _read_records(path: Path) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         raise ValueError(f"{path} must contain a JSON list.")
     return [record for record in data if isinstance(record, dict)]
+
+
+def _existing_raw_image_hashes(records: list[dict[str, Any]]) -> set[str]:
+    return {
+        str(record["raw_image_sha256"])
+        for record in records
+        if isinstance(record.get("raw_image_sha256"), str)
+        and record["raw_image_sha256"].strip()
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _write_records(path: Path, records: list[dict[str, Any]]) -> None:
