@@ -1,18 +1,12 @@
 """TF-CLIP embedding engine for GrepL.
-GrepL 的 TF-CLIP 向量化引擎。
 
 This module owns the CLIP retrieval unit used by the registration and ranking
 pipelines.
-本模块负责登记与排序流程中的 CLIP 检索单元。
 
 - encode_text(): user description -> normalized text vector
-  用户描述 -> 归一化文本向量
 - encode_image(): cropped item image -> normalized image vector
-  裁剪后的物品图片 -> 归一化图像向量
 - register_item_image(): persist image vectors for registered found items
-  为已登记物品持久化图像向量
 - match_text_to_images(): compute visual_similarity and return Candidate objects
-  计算 visual_similarity，并返回 Candidate 对象
 """
 
 from __future__ import annotations
@@ -57,7 +51,6 @@ _image_encoder = None
 
 def encode_text(description: str) -> np.ndarray:
     """Convert one user description into a normalized text vector.
-    将一条用户描述转换为归一化文本向量。
     """
     text = description.strip()
     if not text:
@@ -71,7 +64,6 @@ def encode_text(description: str) -> np.ndarray:
 
 def encode_image(image_path: str | Path) -> np.ndarray:
     """Convert one cropped found-item image into a normalized image vector.
-    将一张裁剪后的拾获物品图片转换为归一化图像向量。
     """
     path = Path(image_path)
     if not path.is_file():
@@ -92,7 +84,6 @@ def register_item_image(
     store_path: str | Path = DEFAULT_EMBEDDING_STORE,
 ) -> bool:
     """Encode and persist an item's image embedding for later retrieval.
-    生成并保存单个物品的图像向量，供后续检索使用。
     """
     try:
         vector = encode_image(registering_item.image_path)
@@ -122,7 +113,6 @@ def match_text_to_images(
     store_path: str | Path = DEFAULT_EMBEDDING_STORE,
 ) -> list[Candidate]:
     """Compare user text with found-item images and return ranker candidates.
-    比较用户文本与拾获物品图片，并返回可交给 ranker 的 Candidate 列表。
     """
     text_vector = encode_text(description)
     store_file = Path(store_path)
@@ -146,7 +136,6 @@ def match_text_to_images(
                 store_changed = True
         except (FileNotFoundError, OSError, ValueError) as error:
             # Keep one bad record from breaking the whole search.
-            # 单条坏数据不应导致整次搜索失败。
             LOGGER.warning(
                 "Skip item %s because its image embedding cannot be prepared: %s",
                 item.item_id,
@@ -177,7 +166,6 @@ def match_text_to_images(
 
 def _ensure_model_loaded() -> None:
     """Lazy-load the TF-CLIP model and split it into text/image encoders.
-    延迟加载 TF-CLIP 模型，并拆分出文本编码器和图像编码器。
     """
     global _model, _image_preprocess, _text_preprocess, _text_encoder, _image_encoder
 
@@ -209,7 +197,6 @@ def _ensure_model_loaded() -> None:
 
 def _resolve_weights_path() -> Path | None:
     """Resolve an optional local weights file, otherwise let tfclip download.
-    解析可选的本地权重文件；如果没有，则交给 tfclip 自动下载。
     """
     if WEIGHTS_PATH:
         path = Path(WEIGHTS_PATH)
@@ -223,7 +210,6 @@ def _resolve_weights_path() -> Path | None:
 
 def _embedding_for_item(item: LostItem, store: dict[str, dict[str, Any]]) -> np.ndarray | None:
     """Return a valid cached image embedding, or None when it must be rebuilt.
-    返回有效缓存图像向量；如果缓存失效，则返回 None 以便重新生成。
     """
     record = store.get(str(item.item_id))
     if not _record_matches_item(item, record):
@@ -250,7 +236,6 @@ def _embedding_for_item(item: LostItem, store: dict[str, dict[str, Any]]) -> np.
 
 def _record_matches_item(item: LostItem, record: dict[str, Any] | None) -> bool:
     """Validate cache metadata before trusting a stored vector.
-    信任缓存向量之前，先校验缓存元信息。
     """
     if not isinstance(record, dict):
         return False
@@ -267,7 +252,6 @@ def _record_matches_item(item: LostItem, record: dict[str, Any] | None) -> bool:
 
 def _dimension_matches(recorded_dimension: Any, vector_size: int) -> bool:
     """Check stored and expected embedding dimensions.
-    检查缓存记录维度和当前期望维度是否一致。
     """
     dimension = _safe_int(recorded_dimension)
     if dimension is None or dimension != vector_size:
@@ -279,7 +263,6 @@ def _dimension_matches(recorded_dimension: Any, vector_size: int) -> bool:
 
 def _item_image_available(item: LostItem) -> bool:
     """Return whether the item's image path can be used for retrieval.
-    判断物品图片路径是否可用于检索。
     """
     path = Path(item.image_path)
     if path.is_file():
@@ -290,7 +273,6 @@ def _item_image_available(item: LostItem) -> bool:
 
 def _embedding_record(item_id: str, image_path: str | Path, vector: np.ndarray) -> dict[str, Any]:
     """Build one JSON-serializable embedding cache record.
-    构建一条可写入 JSON 的向量缓存记录。
     """
     return {
         "item_id": str(item_id),
@@ -305,7 +287,6 @@ def _embedding_record(item_id: str, image_path: str | Path, vector: np.ndarray) 
 
 def _read_embedding_store(path: Path) -> dict[str, dict[str, Any]]:
     """Read the image embedding JSON store; invalid cache data is ignored.
-    读取图像向量 JSON 存储；无效缓存数据会被忽略。
     """
     if not path.is_file():
         return {}
@@ -323,7 +304,6 @@ def _read_embedding_store(path: Path) -> dict[str, dict[str, Any]]:
 
 def _write_embedding_store(path: Path, store: dict[str, dict[str, Any]]) -> None:
     """Write the embedding store atomically to reduce partial-file risk.
-    原子化写入向量库，降低文件写到一半损坏的风险。
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f"{path.name}.tmp")
@@ -333,7 +313,6 @@ def _write_embedding_store(path: Path, store: dict[str, dict[str, Any]]) -> None
 
 def _l2_normalize(vector: np.ndarray) -> np.ndarray:
     """L2-normalize a vector for cosine-similarity retrieval.
-    对向量做 L2 归一化，便于计算余弦相似度。
     """
     norm = float(np.linalg.norm(vector))
     if norm <= 1e-12:
@@ -343,16 +322,13 @@ def _l2_normalize(vector: np.ndarray) -> np.ndarray:
 
 def _cosine_to_unit_interval(cosine: float) -> float:
     """Map cosine similarity from [-1, 1] to a UI-friendly [0, 1] score.
-    将余弦相似度从 [-1, 1] 映射为更适合展示的 [0, 1] 分数。
     """
     return round(max(0.0, min(1.0, (cosine + 1.0) / 2.0)), 4)
 
 
 
 def _cosine_to_display_similarity(cosine: float) -> float:
-    """Sigmoid display mapping for visual_similarity.
-    Sigmoid 展示映射：更平滑，不容易直接顶到 1.0。
-    """
+    """Map raw CLIP cosine to a user-facing visual similarity score with sigmoid."""
     if not np.isfinite(cosine):
         return 0.0
     if DISPLAY_SIMILARITY_SCALE <= 1e-12:
@@ -365,7 +341,6 @@ def _cosine_to_display_similarity(cosine: float) -> float:
 
 def _safe_int(value: Any) -> int | None:
     """Convert a value to int when possible.
-    尽可能将输入转换为整数。
     """
     try:
         return int(value)
