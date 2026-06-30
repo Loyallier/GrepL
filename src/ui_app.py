@@ -34,6 +34,8 @@ PROCESS_STAGES = (
     "Ranking results by time and location...",
 )
 LOGGER = logging.getLogger(__name__)
+FOLLOW_UP_IGNORE = "__IGNORE__"
+FOLLOW_UP_KEEP = "__KEEP__"
 
 
 def run_app() -> None:
@@ -58,6 +60,7 @@ def _register_pages() -> None:
         ui.add_head_html(_detail_image_zoom_script())
 
         with ui.element("main").classes("app-shell") as app_shell:
+            # Search input area: description field, filters, reset, and search actions.
             with ui.element("section").classes("search-section"):
                 ui.label("GrepL").classes("brand")
                 with ui.element("div").classes("search-body"):
@@ -131,6 +134,7 @@ def _register_pages() -> None:
                             process_steps.append(step)
                     process_panel.set_visibility(False)
 
+            # Results area is hidden until the first search starts.
             with ui.element("section").classes("results-section") as results_section:
                 with ui.row().classes("results-header"):
                     ui.label("Candidate Matches").classes("section-title")
@@ -153,8 +157,13 @@ def _register_pages() -> None:
         def set_process_stage(
             index: int, *, done: bool = False, error: bool = False
         ) -> None:
+            """Update the visual search-progress indicator.
+            A step before the current index is marked as complete.
+            The current step is active unless the flow is done or failed.
+            """
             process_panel.set_visibility(True)
             for step_index, step in enumerate(process_steps):
+                # Reset all stage states before applying the new state.
                 step.classes(
                     remove="process-step-active process-step-complete process-step-error"
                 )
@@ -170,7 +179,9 @@ def _register_pages() -> None:
             clarification_banner.set_visibility(False)
 
         def current_query() -> SearchQuery | None:
+            """Validate user input and convert the current form values into a SearchQuery."""
             query_text = (description.value or "").strip()
+            # Stop before calling the backend when the required description is missing.
             if not query_text:
                 description.props("error error-message='Description is required'")
                 ui.notify(
@@ -186,6 +197,8 @@ def _register_pages() -> None:
             )
 
         async def run_search(query: SearchQuery) -> None:
+            """Run one search request and render either clarification, results, or error state."""
+            # Prepare the UI for a new search and prevent duplicate submissions.
             clear_clarification()
             close_filters()
             app_shell.classes(add="app-shell-active")
@@ -198,8 +211,10 @@ def _register_pages() -> None:
             try:
                 set_process_stage(1)
                 await asyncio.sleep(0.18)
+                # search_items is synchronous, so run it in a worker thread to avoid blocking the UI.
                 response = await asyncio.to_thread(search_items, query)
 
+                # Some queries are ambiguous; render the backend follow-up instead of showing results.
                 if response.follow_up is not None:
                     status_label.text = "Clarification needed."
                     set_process_stage(1)
@@ -224,6 +239,7 @@ def _register_pages() -> None:
                     icon="error",
                 )
             finally:
+                # Always re-enable the search button, even if the backend call fails.
                 search_button.enable()
 
         def render_clarification(
@@ -241,6 +257,8 @@ def _register_pages() -> None:
                         for option in follow_up.options:
                             ui.button(
                                 option,
+                                # Bind the current option value at button creation time.
+                                # Without selected=option, every button would use the last loop value.
                                 on_click=lambda selected=option: asyncio.create_task(
                                     run_search(
                                         _query_with_follow_up(
@@ -308,6 +326,9 @@ def _date_input(label: str) -> ui.input:
 def _query_with_follow_up(
     query: SearchQuery, follow_up: FollowUpQuestion, answer: str
 ) -> SearchQuery:
+    """Create a new query by applying the user's answer to a follow-up question.
+    The original query is copied first so that the previous search state is not mutated.
+    """
     next_query = SearchQuery(
         description=query.description,
         search_text=query.search_text,
@@ -317,11 +338,14 @@ def _query_with_follow_up(
         result_limit=query.result_limit,
         item_type_hint=query.item_type_hint,
         color_hint=query.color_hint,
+        # Copy mutable fields to avoid modifying the previous query object.
         special_notes=list(query.special_notes),
         component_color_hints=dict(query.component_color_hints),
     )
 
     if follow_up.target == "item_type_hint":
+        # If the user rejects all suggested item types, fall back to the original text
+        # instead of forcing a wrong item_type_hint into the backend ranker.
         if answer == "None of the above":
             next_query.use_original_query = True
             next_query.search_text = None
@@ -332,8 +356,9 @@ def _query_with_follow_up(
         else:
             next_query.item_type_hint = answer
     elif follow_up.target == "special_notes":
+        # Use sentinel values expected by the query-understanding layer.
         next_query.special_notes = [
-            "__IGNORE__" if answer.lower().startswith("no") else "__KEEP__"
+            FOLLOW_UP_IGNORE if answer.lower().startswith("no") else FOLLOW_UP_KEEP
         ]
 
     return next_query
@@ -367,9 +392,9 @@ def _render_result_card(index: int, result: MatchResult) -> None:
                     ui.label(_percent(result.overall_match)).classes("score-ring-value")
 
         detail_dialog = _render_result_detail_dialog(index, result)
-        ui.button("Details", on_click=detail_dialog.open).classes("details-button").props(
-            "flat dense no-caps type=button"
-        )
+        ui.button("Details", on_click=detail_dialog.open).classes(
+            "details-button"
+        ).props("flat dense no-caps type=button")
 
 
 def _render_result_detail_dialog(index: int, result: MatchResult) -> ui.dialog:
@@ -428,11 +453,13 @@ def _render_result_detail_dialog(index: int, result: MatchResult) -> ui.dialog:
 
 def _render_zoomable_result_image(index: int, result: MatchResult) -> None:
     viewport_id = f"detail-image-{index}-{_dom_id_part(result.item_id)}"
-    with ui.element("div").classes("detail-image-viewport").props(f'id="{viewport_id}"'):
+    with (
+        ui.element("div").classes("detail-image-viewport").props(f'id="{viewport_id}"')
+    ):
         image_url = _image_url(result.image_path)
         if image_url:
             ui.html(
-                '<img '
+                "<img "
                 'class="detail-zoom-image" '
                 f'src="{escape(image_url, quote=True)}" '
                 'alt="Candidate item image" '
@@ -447,7 +474,9 @@ def _render_zoomable_result_image(index: int, result: MatchResult) -> None:
                 "flat round dense type=button aria-label='Zoom out'"
             ).on(
                 "click",
-                lambda: ui.run_javascript(f"window.greplZoomImage('{viewport_id}', 0.85)"),
+                lambda: ui.run_javascript(
+                    f"window.greplZoomImage('{viewport_id}', 0.85)"
+                ),
             )
             ui.button(icon="restart_alt").classes("detail-zoom-button").props(
                 "flat round dense type=button aria-label='Reset image zoom'"
@@ -459,7 +488,9 @@ def _render_zoomable_result_image(index: int, result: MatchResult) -> None:
                 "flat round dense type=button aria-label='Zoom in'"
             ).on(
                 "click",
-                lambda: ui.run_javascript(f"window.greplZoomImage('{viewport_id}', 1.18)"),
+                lambda: ui.run_javascript(
+                    f"window.greplZoomImage('{viewport_id}', 1.18)"
+                ),
             )
 
 
@@ -531,12 +562,16 @@ def _build_time_point(selected_date: str | None) -> TimePoint | None:
 
 
 def _image_url(image_path: str) -> str | None:
+    """Convert a local item image path into a static URL if it is safe to serve.
+    Only files inside ITEM_IMAGE_DIR are exposed through /item-images.
+    """
     path = Path(image_path)
     if not path.is_file():
         return None
     try:
         relative_path = path.relative_to(ITEM_IMAGE_DIR).as_posix()
     except ValueError:
+        # Reject paths outside the configured item-image directory.
         return None
     return f"/item-images/{relative_path}"
 
@@ -547,6 +582,7 @@ def _dom_id_part(value: str) -> str:
 
 
 def _detail_image_zoom_script() -> str:
+    """Return the JavaScript used for zooming and dragging detail images."""
     return """
 <script>
 (() => {
@@ -629,12 +665,14 @@ def _format_time_point(time_point: TimePoint | None) -> str:
 
 
 def _percent(value: float | None) -> str:
+    """Format a match score as a percentage label."""
     if value is None:
         return "N/A"
     return f"{round(_clamp(value) * 100):d}%"
 
 
 def _clamp(value: Any) -> float:
+    """Convert a score-like value into the safe 0.0 to 1.0 range for UI display."""
     try:
         numeric = float(value)
     except (TypeError, ValueError):
@@ -648,6 +686,7 @@ def _score_ring_style(value: float | None) -> str:
 
 
 def _confidence_text(label: str) -> str:
+    """Normalize backend confidence labels into the three UI categories."""
     normalized = label.strip().lower()
     if "high" in normalized or "strong" in normalized:
         return "High"
