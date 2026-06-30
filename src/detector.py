@@ -1,4 +1,9 @@
-"""Object detection and cropping pipeline for found-item photos."""
+"""Object detection and cropping pipeline for found-item photos.
+
+The module tries a trained OpenCV DNN detector first. If the model files are
+not available, or the detector returns no usable boxes, it falls back to a
+simple foreground-region detector based on color and texture differences.
+"""
 
 from __future__ import annotations
 
@@ -43,7 +48,10 @@ class ObjectBox:
 
 
 def detect_objects(row_image_path: str) -> list[RowItem]:
-    """Detect objects from one raw image, crop them, and return cropped items."""
+    """Detect objects from one raw image, crop them, and return cropped items.
+
+    This is the main entry point used by the rest of the search pipeline.
+    """
 
     source_path = Path(row_image_path)
     if not source_path.is_file():
@@ -77,6 +85,8 @@ def infer_object_boxes(row_image_path: str) -> list[ObjectBox]:
 
     if weights_path:
         try:
+            # Prefer the trained model when it is present because it usually
+            # produces tighter boxes than the generic foreground fallback.
             object_boxes = _detect_with_opencv_dnn(
                 source_path,
                 weights_path=weights_path,
@@ -92,6 +102,8 @@ def infer_object_boxes(row_image_path: str) -> list[ObjectBox]:
         except Exception as error:
             LOGGER.warning("OpenCV detector failed for %s: %s", source_path, error)
 
+    # The fallback keeps the application usable in local setups where the
+    # large detector model has not been downloaded.
     object_boxes = _detect_with_foreground_regions(
         source_path,
         confidence_threshold=DEFAULT_FOREGROUND_CONFIDENCE_THRESHOLD,
@@ -126,10 +138,14 @@ def crop_detected_objects(
     from PIL import Image, ImageOps
 
     crop_dir = DEFAULT_CROP_DIR
+    # Crops are materialized on disk because later embedding and ranking steps
+    # work with image paths rather than in-memory image objects.
     crop_dir.mkdir(parents=True, exist_ok=True)
 
     cropped_items: list[RowItem] = []
     with Image.open(source_path) as source:
+        # Respect EXIF orientation so boxes and crops line up with the image as
+        # it is visually displayed.
         image = ImageOps.exif_transpose(source)
         width, height = image.size
         for index, object_box in enumerate(object_boxes, start=1):
@@ -162,6 +178,8 @@ def _detect_with_opencv_dnn(
     confidence_threshold: float,
     max_objects: int,
 ) -> list[ObjectBox]:
+    """Run an OpenCV DNN model and convert raw detections to ObjectBox values."""
+
     import cv2
 
     if not weights_path.is_file():
@@ -170,6 +188,8 @@ def _detect_with_opencv_dnn(
         raise FileNotFoundError(f"Detector config not found: {config_path}")
 
     model_format = _model_format(weights_path, config_path)
+    # OpenCV exposes slightly different loaders for TensorFlow, Caffe, and
+    # generic DNN models, so choose the reader from the file layout.
     if model_format == "tensorflow":
         net = cv2.dnn.readNetFromTensorflow(str(weights_path), str(config_path))
     elif config_path is not None and config_path.suffix in {".prototxt", ".txt"}:
@@ -185,6 +205,8 @@ def _detect_with_opencv_dnn(
 
     height, width = image.shape[:2]
     if model_format == "tensorflow":
+        # TensorFlow object detection models usually expect a square image with
+        # RGB channel order.
         input_size = _int_from_env("GREPL_DNN_INPUT_SIZE", DEFAULT_DNN_INPUT_SIZE)
         blob = cv2.dnn.blobFromImage(
             image,
@@ -195,6 +217,8 @@ def _detect_with_opencv_dnn(
             crop=False,
         )
     else:
+        # MobileNet SSD Caffe-style models commonly use 300x300 input and the
+        # standard 127.5 mean subtraction.
         blob = cv2.dnn.blobFromImage(
             image,
             scalefactor=0.007843,
@@ -212,6 +236,8 @@ def _detect_with_opencv_dnn(
             f"Unsupported detector output shape: {raw_detections.shape}"
         ) from error
 
+    # Expected detection row format: [batch_id, class_id, confidence,
+    # x_min, y_min, x_max, y_max], where coordinates are normalized to [0, 1].
     for raw in detections:
         confidence = float(raw[2])
         if confidence < confidence_threshold:
@@ -229,6 +255,8 @@ def _detect_with_opencv_dnn(
         if normalized_box is None:
             continue
         if _is_upper_background_box(normalized_box, image_height=height):
+            # Ignore boxes entirely in the top strip. In the project images this
+            # area is often background or page chrome instead of a found item.
             continue
 
         object_boxes.append(
@@ -252,12 +280,20 @@ def _detect_with_foreground_regions(
     confidence_threshold: float,
     max_objects: int,
 ) -> list[ObjectBox]:
+    """Find foreground regions without a trained model.
+
+    This heuristic looks for pixels that differ from the border background and
+    for textured areas, then turns connected mask regions into crop boxes.
+    """
+
     import numpy as np
     from PIL import Image, ImageOps
 
     with Image.open(image_path) as source:
         image = ImageOps.exif_transpose(source).convert("RGB")
         original_width, original_height = image.size
+        # Downscale large photos for faster mask operations, then scale boxes
+        # back to the original image size before returning.
         scale = min(1.0, 900 / max(original_width, original_height))
         if scale < 1.0:
             image = image.resize((int(original_width * scale), int(original_height * scale)))
@@ -272,8 +308,12 @@ def _detect_with_foreground_regions(
     color_threshold = _foreground_color_threshold(distance)
     texture = _texture_strength(data)
     texture_threshold = _foreground_texture_threshold(texture)
+    # A pixel is considered foreground if it is either visually different from
+    # the border color or has enough local texture.
     mask = (distance > color_threshold) | (texture > texture_threshold)
     mask = _remove_border_noise(mask)
+    # Morphological cleanup joins nearby foreground pixels and removes isolated
+    # gaps before connected-component analysis.
     mask = _dilate_mask(mask, iterations=max(2, min(width, height) // 90))
     mask = _erode_mask(mask, iterations=1)
 
@@ -303,6 +343,8 @@ def _detect_with_foreground_regions(
         area_ratio = area / (width * height)
         contrast = float(distance[top : bottom + 1, left : right + 1].mean())
         texture_score = float(texture[top : bottom + 1, left : right + 1].mean())
+        # Confidence is a heuristic score based on region size, contrast, and
+        # texture strength. It is not calibrated like a model probability.
         confidence = min(
             0.92,
             0.3 + area_ratio * 3.0 + contrast / 255 * 0.28 + texture_score / 255 * 0.22,
@@ -335,6 +377,8 @@ def _detect_with_foreground_regions(
 
 
 def _connected_components(mask: np.ndarray, *, min_area: int) -> list[tuple[int, int, int, int, int]]:
+    """Group neighboring foreground pixels into rectangular components."""
+
     import numpy as np
 
     height, width = mask.shape
@@ -368,6 +412,8 @@ def _connected_components(mask: np.ndarray, *, min_area: int) -> list[tuple[int,
                 queue.append((next_y, next_x))
 
         box_area = (right - left + 1) * (bottom - top + 1)
+        # Filter both by true foreground area and by bounding rectangle size so
+        # small specks and thin noise lines do not become crops.
         if area >= min_area and box_area >= min_area:
             components.append((left, top, right, bottom, area))
 
@@ -377,6 +423,8 @@ def _connected_components(mask: np.ndarray, *, min_area: int) -> list[tuple[int,
 def _estimate_border_color(data: np.ndarray) -> np.ndarray:
     import numpy as np
 
+    # The border is used as a rough background sample because found items are
+    # usually centered away from the image edges.
     top = data[0, :, :]
     bottom = data[-1, :, :]
     left = data[:, 0, :]
@@ -413,6 +461,8 @@ def _foreground_texture_threshold(texture: np.ndarray) -> float:
 
 
 def _remove_border_noise(mask: np.ndarray) -> np.ndarray:
+    """Clear a thin image border to avoid selecting frame/background edges."""
+
     cleaned = mask.copy()
     height, width = cleaned.shape
     border = max(1, min(width, height) // 60)
@@ -424,6 +474,8 @@ def _remove_border_noise(mask: np.ndarray) -> np.ndarray:
 
 
 def _dilate_mask(mask: np.ndarray, *, iterations: int) -> np.ndarray:
+    """Expand foreground pixels to join nearby pieces of the same object."""
+
     expanded = mask.copy()
     for _ in range(iterations):
         padded = _pad_boolean_mask(expanded)
@@ -442,6 +494,8 @@ def _dilate_mask(mask: np.ndarray, *, iterations: int) -> np.ndarray:
 
 
 def _erode_mask(mask: np.ndarray, *, iterations: int) -> np.ndarray:
+    """Shrink the mask after dilation to reduce over-expanded boundaries."""
+
     eroded = mask.copy()
     for _ in range(iterations):
         padded = _pad_boolean_mask(eroded)
@@ -477,6 +531,8 @@ def _merge_overlapping_boxes(
     image_width: int,
     image_height: int,
 ) -> list[ObjectBox]:
+    """Merge boxes that likely describe the same physical item."""
+
     merged: list[ObjectBox] = []
     for object_box in object_boxes:
         normalized = _normalize_box(object_box, image_width, image_height)
@@ -508,6 +564,8 @@ def _split_oversized_boxes(
     image_width: int,
     image_height: int,
 ) -> list[ObjectBox]:
+    """Split very large fallback boxes into smaller search candidates."""
+
     expanded: list[ObjectBox] = []
     for object_box in object_boxes:
         if not _box_is_oversized(object_box, image_width, image_height):
@@ -551,6 +609,8 @@ def _tile_box(
     image_width: int,
     image_height: int,
 ) -> list[ObjectBox]:
+    """Create overlapping tiles inside one large box."""
+
     tiles: list[ObjectBox] = []
     box_width = object_box.right - object_box.left
     box_height = object_box.bottom - object_box.top
@@ -588,6 +648,8 @@ def _tile_box(
 
 
 def _deduplicate_boxes(object_boxes: list[ObjectBox]) -> list[ObjectBox]:
+    """Remove nearly identical boxes while preserving the original order."""
+
     deduplicated: list[ObjectBox] = []
     for object_box in object_boxes:
         if any(_box_iou(object_box, existing) >= 0.9 for existing in deduplicated):
@@ -601,6 +663,8 @@ def _non_max_suppression(
     *,
     iou_threshold: float,
 ) -> list[ObjectBox]:
+    """Keep high-confidence boxes and drop lower-confidence overlaps."""
+
     selected: list[ObjectBox] = []
     for candidate in sorted(
         object_boxes,
@@ -617,6 +681,8 @@ def _non_max_suppression(
 
 
 def _box_iou(first: ObjectBox, second: ObjectBox) -> float:
+    """Return intersection-over-union for two boxes."""
+
     intersection_left = max(first.left, second.left)
     intersection_top = max(first.top, second.top)
     intersection_right = min(first.right, second.right)
@@ -659,6 +725,8 @@ def _boxes_should_merge(first: ObjectBox, second: ObjectBox) -> bool:
 
 
 def _model_path_from_env(env_name: str, *, default_path: Path) -> Path | None:
+    """Read an optional model path from the environment."""
+
     configured_path = os.environ.get(env_name)
     if configured_path:
         return Path(configured_path)
@@ -708,6 +776,8 @@ def _int_from_env(env_name: str, default: int) -> int:
 
 
 def _scale_object_box(object_box: ObjectBox, *, scale_x: float, scale_y: float) -> ObjectBox:
+    """Scale a box from resized-image coordinates back to source coordinates."""
+
     return ObjectBox(
         left=max(0, int(round(object_box.left * scale_x))),
         top=max(0, int(round(object_box.top * scale_y))),
@@ -740,6 +810,8 @@ def _expand_crop_box_bottom_right(
     image_width: int,
     image_height: int,
 ) -> tuple[int, int, int, int]:
+    """Add a small bottom-right margin so crops do not clip object edges."""
+
     left, top, right, bottom = box
     padding = max(
         2,
@@ -769,6 +841,8 @@ def _box_area(object_box: ObjectBox) -> int:
 
 
 def _full_image_box(image_path: Path, *, confidence: float) -> list[ObjectBox]:
+    """Return one fallback box covering the whole image."""
+
     from PIL import Image, ImageOps
 
     with Image.open(image_path) as source:
