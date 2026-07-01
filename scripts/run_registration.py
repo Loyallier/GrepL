@@ -1,4 +1,4 @@
-"""Run the pending found-item registration pipeline from the command line.
+""" Run the pending found-item registration pipeline from the command line.
 
 Usage:
     python scripts/run_registration.py
@@ -14,12 +14,13 @@ from pathlib import Path
 from typing import Any
 
 
+# Add src/ so this script can import project modules when run directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from registration_service import (  # noqa: E402
+from registration_service import (  
     DEFAULT_RAW_INFO_PATH,
     register_pending_raw_found_items,
 )
