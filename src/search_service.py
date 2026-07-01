@@ -133,8 +133,8 @@ def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
 
     component_colors = query.component_color_hints or analysis.component_colors
 
-    # 构建视觉embedding用的搜索文本（只包含视觉相关信息，不包含地点和时间）
-    # 地点和时间只在ranker里使用，避免污染visual_similarity
+    # Build search text for visual embedding with only visual-related info (no location/time)
+    # Location and time are only used in the ranker to avoid polluting visual similarity
     reconstructed_query = build_reconstructed_query(
         item_type=item_type,
         color=color,
