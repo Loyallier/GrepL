@@ -1,4 +1,4 @@
-"""Import raw found-item images into the local JSON database.
+""" Import raw found-item images into the local JSON database.
 
 Usage:
     python scripts/add_raw_found_images.py path/to/source_images
@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 
+# Add src/ so this script can import project modules when run directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
@@ -40,6 +41,8 @@ def main() -> None:
         raise SystemExit(f"No supported image files found in: {source_dir}")
 
     records = _read_records(RAW_INFO_PATH)
+    
+    # Use file hashes to skip raw images that were already imported.
     existing_hashes = _existing_raw_image_hashes(records)
     RAW_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 

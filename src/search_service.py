@@ -1,4 +1,9 @@
-"""Stable bridge between the browser UI and the matching backend."""
+"""
+Manage the search workflow from user input to the final ranked results.
+
+This module normalizes query input, handles guided clarification, runs visual
+retrieval, and sends candidates to the ranking pipeline.
+"""
 
 from __future__ import annotations
 
@@ -10,15 +15,25 @@ from contracts import Candidate, FollowUpQuestion, LostItem, SearchQuery, Search
 from ranker import evaluate_matches
 
 
+# Default number of results used when the UI sends an invalid value.
 DEFAULT_RESULT_LIMIT = 5
+
+# Upper bound for result counts accepted from the UI.
 MAX_RESULT_LIMIT = 10
 
+# Runtime contract for the embedding module's text-to-image matcher.
 EmbeddingMatcher = Callable[[str, Iterable[LostItem]], Iterable[Candidate]]
+
+# Internal marker used when the user chooses to ignore inferred special notes.
 _SPECIAL_NOTES_IGNORE_SENTINEL = "__IGNORE__"
+
+# Internal marker used when the user confirms inferred special notes.
 _SPECIAL_NOTES_KEEP_SENTINEL = "__KEEP__"
+
+# Clarification option that the user bypass reconstructed search text.
 _NONE_OF_ABOVE_OPTION = "None of the above"
 
-
+# Try to load the query understanding helpers.
 try:
     from query_understanding import analyze_query, build_reconstructed_query
 except ModuleNotFoundError:
@@ -27,11 +42,12 @@ except ModuleNotFoundError:
 
 
 def search_items(query: SearchQuery) -> SearchResponse:
-    """Search registered found items and return ranked candidate matches."""
+    """ Search registered found items and return ranked candidate matches. """
 
     if not query.description.strip() and not (query.search_text or "").strip():
         return SearchResponse(results=[])
 
+    # Build a cleaned SearchQuery before running the search flow.
     normalized_query = SearchQuery(
         description=query.description.strip(),
         search_text=_clean_optional(query.search_text),
@@ -68,6 +84,8 @@ def search_items(query: SearchQuery) -> SearchResponse:
 
 
 class _ResolvedQuery:
+    """ Container for the query state produced by query understanding. """
+
     def __init__(self, *, query_for_ranking: SearchQuery, search_text: str, follow_up: FollowUpQuestion | None):
         self.query_for_ranking = query_for_ranking
         self.search_text = search_text
@@ -75,6 +93,8 @@ class _ResolvedQuery:
 
 
 def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
+    """ Analyze the user query and decide whether clarification is needed. """
+
     if getattr(query, "use_original_query", False):
         search_text = query.description.strip() or query.search_text or ""
         query_for_ranking = SearchQuery(
@@ -133,8 +153,8 @@ def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
 
     component_colors = query.component_color_hints or analysis.component_colors
 
-    # Build search text for visual embedding with only visual-related info (no location/time)
-    # Location and time are only used in the ranker to avoid polluting visual similarity
+    # Build the embedding query from visual hints only.
+    # Time and location are reserved for ranker.py to avoid polluting visual similarity.
     reconstructed_query = build_reconstructed_query(
         item_type=item_type,
         color=color,
@@ -161,6 +181,8 @@ def _resolve_query_understanding(query: SearchQuery) -> _ResolvedQuery:
 
 
 def _append_none_of_above(options: list[str]) -> list[str]:
+    """Clean the follow-up options and add a `None of the above` choice."""
+
     cleaned: list[str] = []
     for option in options:
         candidate = option.strip()
@@ -172,6 +194,8 @@ def _append_none_of_above(options: list[str]) -> list[str]:
 
 
 def _load_registered_items() -> list[LostItem]:
+    """ Load found-item records from the registration service when available. """
+
     registration_service = _optional_module("registration_service")
     if registration_service is None:
         return []
@@ -183,6 +207,8 @@ def _load_registered_items() -> list[LostItem]:
 
 
 def _load_embedding_matcher() -> EmbeddingMatcher | None:
+    """ Return the embedding matcher function when the module is available. """
+
     embedding_engine = _optional_module("embedding_engine")
     if embedding_engine is None:
         return None
@@ -198,10 +224,14 @@ def _match_text_to_images(
     description: str,
     registered_items: Iterable[LostItem],
 ) -> list[Candidate]:
+    """ Use the matcher to compare the query text with registered item images. """
+
     return list(matcher(description, registered_items))
 
 
 def _clean_option(value: str | None, options: dict[str, SelectOption]) -> str:
+    """ Normalize a select option key and fall back to `any` when invalid. """
+
     if value is None:
         return "any"
     cleaned = value.strip()
@@ -209,6 +239,8 @@ def _clean_option(value: str | None, options: dict[str, SelectOption]) -> str:
 
 
 def _clean_result_limit(value: int | str | None) -> int:
+    """ Convert a requested result count into the supported UI range. """
+
     try:
         return max(1, min(int(value), MAX_RESULT_LIMIT))
     except (TypeError, ValueError):
@@ -216,6 +248,8 @@ def _clean_result_limit(value: int | str | None) -> int:
 
 
 def _clean_optional(value: str | None) -> str | None:
+    """ Trim an optional string and convert empty values to `None`. """
+
     if value is None:
         return None
     cleaned = value.strip()
@@ -223,6 +257,8 @@ def _clean_optional(value: str | None) -> str | None:
 
 
 def _optional_module(module_name: str):
+    """ Import an optional top-level module without hiding nested import errors. """
+
     try:
         return importlib.import_module(module_name)
     except ModuleNotFoundError as error:

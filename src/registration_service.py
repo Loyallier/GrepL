@@ -1,8 +1,9 @@
-"""Found-item registration workflow.
+""" 
+Manage the workflow that turns raw photos found item into searchable local 
+records in the database.
 
-This module coordinates the database-facing registration pipeline:
-load raw found-image records, detect individual items and crop the corresponding image, create
-searchable found-item records, and register image embeddings.
+This module loads pending raw image records, crops detected items, stores
+searchable records of found items, and optionally registers image embeddings.
 """
 
 from __future__ import annotations
@@ -19,10 +20,16 @@ from contracts import LostItem, RawFoundItem, RegisterItem, RowItem, TimePoint
 from detector import detect_objects
 
 
+# Absolute project root used to resolve local data files.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+# JSON file that tracks records of raw found images and processing status.
 DEFAULT_RAW_INFO_PATH = PROJECT_ROOT / "data" / "raw_found_image_info.json"
+
+# JSON registry that stores searchable records of found items generated after the raw images are cropped.
 DEFAULT_REGISTRY_PATH = PROJECT_ROOT / "data" / "generated" / "found_items.json"
 
+# Runtime contract for object detector functions used druing registration.
 DetectorFunction = Callable[[str], list[RowItem]]
 
 
@@ -33,7 +40,7 @@ def register_pending_raw_found_items(
     registry_path: str | Path = DEFAULT_REGISTRY_PATH,
     register_embedding: bool = True,
 ) -> list[LostItem]:
-    """Register every raw image record whose JSON status is ``pending``."""
+    """ Register every raw image record whose JSON status is pending. """
 
     raw_info = Path(raw_info_path)
     records = _read_json_list(raw_info)
@@ -74,7 +81,9 @@ def register_raw_found_item(
     registry_path: str | Path = DEFAULT_REGISTRY_PATH,
     register_embedding: bool = True,
 ) -> list[LostItem]:
-    """Register all detected items from one RawFoundItem batch.
+    """
+    Register all detected items from one raw found image which can contain lots
+    of items .
 
     The detector returns cropped item images. Each crop becomes one LostItem
     record, and each image is optionally passed to embedding_engine.py through
@@ -109,10 +118,7 @@ def register_raw_found_item(
 def load_registered_items(
     registry_path: str | Path = DEFAULT_REGISTRY_PATH,
 ) -> list[LostItem]:
-    """Load locally registered found-item records.
-
-    This is a lightweight stand-in until a real database module owns storage.
-    """
+    """ Load all locally registered records of found items. """
 
     path = Path(registry_path)
     if not path.is_file():
@@ -123,6 +129,8 @@ def load_registered_items(
 
 
 def _register_embedding(item: LostItem, *, enabled: bool) -> bool:
+    """ Register an item image embedding when embedding support is enabled. """
+
     if not enabled:
         return False
 
@@ -130,7 +138,7 @@ def _register_embedding(item: LostItem, *, enabled: bool) -> bool:
     if embedding_engine is None or not hasattr(embedding_engine, "register_item_image"):
         return False
 
-    # To call embedding to process the image and get vector
+    # Delegate vector creation to embedding_engine.py.
     return bool(
         embedding_engine.register_item_image(
             RegisterItem(item_id=item.item_id, image_path=item.image_path)
@@ -145,6 +153,8 @@ def _append_local_record(
     embedding_registered: bool,
     registry_path: Path,
 ) -> None:
+    """ Append one registered item record to the local JSON registry. """
+
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     records = _read_registry_records(registry_path)
     records.append(
@@ -161,6 +171,8 @@ def _append_local_record(
 
 
 def _read_registry_records(registry_path: Path) -> list[dict[str, object]]:
+    """Read the found-item registry and validate its list shape."""
+
     if not registry_path.is_file():
         return []
 
@@ -173,12 +185,16 @@ def _read_registry_records(registry_path: Path) -> list[dict[str, object]]:
 # Conversion and JSON helpers below keep workflow metadata in files while
 # converting only core contract fields into RawFoundItem and LostItem objects.
 def _lost_item_to_record(item: LostItem) -> dict[str, object]:
+    """ Convert a LostItem dataclass into a JSON-serializable record. """
+
     record = asdict(item)
     record["found_time"] = asdict(item.found_time) if item.found_time else None
     return record
 
 
 def _lost_item_from_record(record: dict[str, object]) -> LostItem:
+    """ Convert a stored registry record into a LostItem object. """
+
     found_time_data = record.get("found_time")
     found_time = (
         TimePoint(**found_time_data)
@@ -201,6 +217,8 @@ def _lost_item_from_record(record: dict[str, object]) -> LostItem:
 
 
 def _raw_item_from_record(record: dict[str, object]) -> RawFoundItem:
+    """ Convert a raw-image JSON record into a RawFoundItem object. """
+
     found_time_data = record.get("found_time")
     found_time = (
         TimePoint(**found_time_data)
@@ -220,6 +238,8 @@ def _raw_item_from_record(record: dict[str, object]) -> RawFoundItem:
 
 
 def _read_json_list(path: Path) -> list[dict[str, object]]:
+    """ Read a JSON list file and return only dictionary records. """
+
     if not path.is_file():
         return []
 
@@ -230,6 +250,8 @@ def _read_json_list(path: Path) -> list[dict[str, object]]:
 
 
 def _write_json(path: Path, data: object) -> None:
+    """ Write JSON data with UTF-8 encoding and stable formatting. """
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
@@ -238,6 +260,8 @@ def _write_json(path: Path, data: object) -> None:
 
 
 def _float_or_default(value: object, default: float) -> float:
+    """ Convert a value to float, falling back when conversion fails. """
+
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -245,6 +269,8 @@ def _float_or_default(value: object, default: float) -> float:
 
 
 def _optional_module(module_name: str):
+    """ Import an optional top-level module without hiding nested import errors. """
+
     try:
         return importlib.import_module(module_name)
     except ModuleNotFoundError as error:
@@ -254,8 +280,12 @@ def _optional_module(module_name: str):
 
 
 def _new_item_id() -> str:
+    """ Create a short unique identifier for one cropped found item. """
+
     return f"item_{uuid4().hex[:12]}"
 
 
 def _utc_now() -> str:
+    """ Return the current UTC timestamp. """
+
     return datetime.now(timezone.utc).isoformat()
